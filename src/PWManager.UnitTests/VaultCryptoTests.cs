@@ -1,5 +1,5 @@
 using System.Security.Cryptography;
-using PWManager.Infra.Services;
+using PWManager.Infra.Security;
 
 namespace PWManager.UnitTests;
 

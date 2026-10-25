@@ -1,10 +1,9 @@
 using Moq;
-using PWManager.Application;
-using PWManager.Application.DataContracts;
-using PWManager.Application.Enums;
-using PWManager.Domain.DataContracts.InfraService;
-using PWManager.Domain.Model;
-using PWManager.Infra.Config;
+using PWManager.Application.UseCases.Settings;
+using PWManager.Application.UseCases.Maintenance;
+using PWManager.Application.UseCases.Rekey;
+using PWManager.Domain.Settings;
+using PWManager.Infra.Configuration;
 using PWManager.Services.Interfaces;
 using PWManager.ViewModels;
 
@@ -15,7 +14,7 @@ public class SecuritySettingsViewModelTests : IDisposable
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "pwmanager-security-vm-" + Guid.NewGuid().ToString("N"));
 
     private readonly Mock<IVaultRekeyService> _rekey = new();
-    private readonly Mock<IVaultBackupService> _backup = new();
+    private readonly Mock<IVaultMaintenanceService> _backup = new();
     private readonly Mock<IFilePickerService> _picker = new();
     private readonly AppSettingsService _settings;
 

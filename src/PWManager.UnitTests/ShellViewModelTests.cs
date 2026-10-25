@@ -1,12 +1,11 @@
 using Microsoft.Extensions.Time.Testing;
 using Moq;
-using PWManager.Application;
-using PWManager.Application.DataContracts;
-using PWManager.Application.Enums;
-using PWManager.Domain.DataContracts.InfraService;
-using PWManager.Domain.Model;
-using PWManager.Infra.Config;
-using PWManager.Infra.Services;
+using PWManager.Application.UseCases.Settings;
+using PWManager.Application.UseCases.Unlock;
+using PWManager.Domain.Abstractions.Infrastructure;
+using PWManager.Domain.Vault;
+using PWManager.Infra.Configuration;
+using PWManager.Infra.Security;
 using PWManager.ViewModels;
 
 namespace PWManager.UnitTests;
@@ -30,7 +29,7 @@ public class ShellViewModelTests
     [Fact]
     public async Task SuccessfulUnlock_LoadsTheVaultBeforeRevealingIt()
     {
-        var encrypted = new TaskCompletionSource<IEnumerable<User>>();
+        var encrypted = new TaskCompletionSource<IReadOnlyList<User>>();
         var vault = new TestVault();
         vault.UserRepository.Setup(repository => repository.GetAllAsync()).Returns(encrypted.Task);
         var shell = CreateShell(() => vault.ViewModel, UnlockResult.Success);
@@ -89,7 +88,7 @@ public class ShellViewModelTests
         var pendingUnlock = new TaskCompletionSource<UnlockResult>();
         var unlockService = new Mock<IUnlockService>();
         unlockService.Setup(s => s.UnlockAsync(It.IsAny<string>())).Returns(pendingUnlock.Task);
-        var encrypted = new TaskCompletionSource<IEnumerable<User>>();
+        var encrypted = new TaskCompletionSource<IReadOnlyList<User>>();
         var vault = new TestVault();
         vault.UserRepository.Setup(repository => repository.GetAllAsync()).Returns(encrypted.Task);
         var shell = CreateShell(() => vault.ViewModel, unlockService: unlockService.Object);

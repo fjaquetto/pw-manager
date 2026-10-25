@@ -3,8 +3,8 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using PWManager.Domain.Model;
-using PWManager.Infra.Config;
+using PWManager.Domain.Abstractions.Infrastructure;
+using PWManager.Domain.Appearance;
 using PWManager.Services.Interfaces;
 
 namespace PWManager.ViewModels;
@@ -13,11 +13,11 @@ namespace PWManager.ViewModels;
 public partial class ThemeSettingsViewModel : ViewModelBase
 {
     private readonly IThemeService _themeService;
-    private readonly ColorThemeStore _store;
+    private readonly IColorThemeStore _store;
     private ColorScheme _original = ColorScheme.Default;
     private bool _suppressUpdates;
 
-    public ThemeSettingsViewModel(IThemeService themeService, ColorThemeStore store)
+    public ThemeSettingsViewModel(IThemeService themeService, IColorThemeStore store)
     {
         _themeService = themeService;
         _store = store;

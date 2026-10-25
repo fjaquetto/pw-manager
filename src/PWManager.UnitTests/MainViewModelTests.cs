@@ -1,5 +1,5 @@
 using Moq;
-using PWManager.Domain.Model;
+using PWManager.Domain.Vault;
 using PWManager.ViewModels;
 
 namespace PWManager.UnitTests;

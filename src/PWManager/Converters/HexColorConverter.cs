@@ -3,7 +3,7 @@ using System.Globalization;
 using Avalonia.Data;
 using Avalonia.Data.Converters;
 using Avalonia.Media;
-using PWManager.Domain.Model;
+using PWManager.Domain.Appearance;
 
 namespace PWManager.Converters;
 

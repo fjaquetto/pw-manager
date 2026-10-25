@@ -1,4 +1,4 @@
-using PWManager.Domain.Model;
+using PWManager.Domain.Appearance;
 
 namespace PWManager.Services.Interfaces;
 

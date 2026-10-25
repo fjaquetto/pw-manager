@@ -1,6 +1,5 @@
 using System;
 using System.Diagnostics;
-using System.IO;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -8,17 +7,11 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using PWManager.Application;
-using PWManager.Application.DataContracts;
-using PWManager.Domain.DataContracts.InfraService;
-using PWManager.Domain.DataContracts.Repository;
-using PWManager.Domain.Model;
-using PWManager.Infra.Config;
-using PWManager.Infra.Context.SQLite;
-using PWManager.Infra.Context.SQLite.DataContracts;
-using PWManager.Infra.Repository;
-using PWManager.Infra.Services;
-using PWManager.Services;
+using PWManager.Application.UseCases.Bootstrapping;
+using PWManager.Application.UseCases.Unlock;
+using PWManager.Composition;
+using PWManager.Domain.Abstractions.Infrastructure;
+using PWManager.Infra.Configuration;
 using PWManager.Services.Interfaces;
 using PWManager.ViewModels;
 using PWManager.Views;
@@ -44,10 +37,14 @@ public partial class App : AvaloniaApp
 
         MoveRoamingDataIfNeeded(configuration);
 
-        Services = BuildServices(configuration);
+        Services = ServiceRegistration.Build(
+            configuration,
+            () => ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
+                ? desktop.MainWindow
+                : null);
 
         Services.GetRequiredService<IThemeService>()
-            .Apply(Services.GetRequiredService<ColorThemeStore>().LoadActiveScheme());
+            .Apply(Services.GetRequiredService<IColorThemeStore>().LoadActiveScheme());
 
         var shellViewModel = Services.GetRequiredService<ShellViewModel>();
 
@@ -64,49 +61,6 @@ public partial class App : AvaloniaApp
         // Vault preparation is deliberately started after the window has been
         // assigned: it must never delay the first frame.
         _ = PrepareVaultAsync(shellViewModel);
-    }
-
-    private IServiceProvider BuildServices(IConfiguration configuration)
-    {
-        var serviceCollection = new ServiceCollection();
-        serviceCollection.Configure<DatabaseConfig>(options => configuration.GetSection("DatabaseConfig").Bind(options));
-        serviceCollection.AddSingleton<DatabaseConfigurator>();
-        serviceCollection.AddSingleton<IPWDbContextFactory>(provider =>
-            new PWDbContextFactory(provider.GetRequiredService<DatabaseConfigurator>().GetDatabaseFilePath()));
-        serviceCollection.AddScoped(sp => sp.GetRequiredService<IPWDbContextFactory>().CreateDbContext());
-        serviceCollection.AddSingleton<IVaultBootstrapper, VaultBootstrapper>();
-        serviceCollection.AddSingleton<ColorThemeStore>(provider => new ColorThemeStore(
-            Path.Combine(
-                provider.GetRequiredService<DatabaseConfigurator>().GetApplicationFolder(),
-                ColorThemeStore.ThemesFolderName)));
-        serviceCollection.AddSingleton<IThemeService, ThemeService>();
-        serviceCollection.AddSingleton(AppInfo.FromAssembly(typeof(AppInfo).Assembly));
-        serviceCollection.AddSingleton<IVaultSession, VaultSession>();
-        serviceCollection.AddSingleton<IAppSettingsStore>(provider =>
-            new AppSettingsStore(provider.GetRequiredService<DatabaseConfigurator>().GetApplicationFolder()));
-        serviceCollection.AddSingleton<IAppSettingsService, AppSettingsService>();
-        serviceCollection.AddSingleton<IVaultBackupService>(provider =>
-            new VaultBackupService(provider.GetRequiredService<IPWDbContextFactory>().DatabasePath));
-        serviceCollection.AddTransient<IVaultRekeyService, VaultRekeyService>();
-        serviceCollection.AddSingleton<IFilePickerService>(_ => new FilePickerService(() =>
-            ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop ? desktop.MainWindow : null));
-        serviceCollection.AddScoped(typeof(IRepository<>), typeof(Repository<>));
-        serviceCollection.AddScoped<IUserRepository, UserRepository>();
-        serviceCollection.AddScoped<IVaultMetadataRepository, VaultMetadataRepository>();
-        serviceCollection.AddSingleton<IVaultKeyService, VaultKeyService>();
-        serviceCollection.AddSingleton<IVaultSchemaInitializer, SqliteVaultSchemaInitializer>();
-        serviceCollection.AddSingleton<IVaultDataMigrator, VaultDataMigrator>();
-        serviceCollection.AddScoped<IUserEncryptorService, UserEncryptorService>();
-        serviceCollection.AddTransient<IClipboardService, ClipboardService>();
-        serviceCollection.AddTransient<IUnlockService, UnlockService>();
-        serviceCollection.AddTransient<IVaultEntryService, VaultEntryService>();
-        serviceCollection.AddSingleton(TimeProvider.System);
-        serviceCollection.AddTransient<UnlockViewModel>();
-        serviceCollection.AddTransient<MainViewModel>();
-        serviceCollection.AddTransient<ShellViewModel>();
-        serviceCollection.AddSingleton<Func<MainViewModel>>(provider => provider.GetRequiredService<MainViewModel>);
-
-        return serviceCollection.BuildServiceProvider();
     }
 
     private static async Task PrepareVaultAsync(ShellViewModel shell)
