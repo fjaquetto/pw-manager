@@ -94,6 +94,13 @@ To execute the compiled assembly directly:
 dotnet src/PWManager/bin/Release/net10.0/PWManager.dll
 ```
 
+EF Core commands use the infrastructure project as both the migrations and startup project. Set `PWMANAGER_DB_PATH` to point design-time commands at a development database; they never target the personal vault:
+
+```bash
+PWMANAGER_DB_PATH=.dev/pwmanager.db \
+  dotnet ef migrations list --project src/PWManager.Infra --startup-project src/PWManager.Infra
+```
+
 To produce a self-contained Windows package locally:
 
 ```bash
@@ -145,12 +152,13 @@ Pull requests run restore, Debug/Release builds, and all tests on Windows and Li
 
 ### Existing build notices
 
-The redesign removes the deprecated Avalonia properties from the active views. The solution still reports pre-existing nullable-reference and cryptographic-API warnings, and the NuGet `NU1903` advisory for the transitive `SQLitePCLRaw.lib.e_sqlite3` dependency. Those warnings have not been suppressed or represented as fixed by the UI work.
+The redesign removes the deprecated Avalonia properties from the active views. The previous nullable-reference and cryptographic-API warnings were removed during the persistence refactor. The NuGet `NU1903` advisory for the transitive `SQLitePCLRaw.lib.e_sqlite3` dependency remains.
 
 ## Storage and security behavior
 
 - By default, the database is `%LocalAppData%\PWManager\pwmanager.db` on Windows and `~/.local/share/PWManager/pwmanager.db` (the XDG data location) on Linux. Windows installations from earlier versions are moved from the roaming AppData folder automatically.
 - `DatabaseConfig.AppFolder` and `DatabaseConfig.DbFile` in `appsettings.json` control the location.
+- The schema is managed by EF Core migrations at startup. Databases created by older releases with `EnsureCreated()` are baselined automatically before pending migrations are applied.
 - Site, login, and password fields are encrypted before they are written with AES-256-GCM and a key derived with PBKDF2-SHA256 (600,000 iterations) and a per-vault salt stored in the `VaultMetadata` table. This does **not** mean the entire SQLite file is encrypted; IDs and timestamps remain database metadata.
 - Vaults written by earlier versions (PBKDF2-SHA1/1,000 iterations with AES-CBC) are detected and re-encrypted to the v2 format on the first successful unlock, inside a transaction and with a transient snapshot as a safety net.
 - The derived key lives in memory only while the vault is unlocked and is zeroed (`CryptographicOperations.ZeroMemory`) when the vault is locked; the master password itself is not retained.
@@ -164,12 +172,16 @@ The redesign removes the deprecated Avalonia properties from the active views. T
 
 | Project | Responsibility |
 |---|---|
-| PWManager.Domain | Entities and repository/encryption contracts |
-| PWManager.Application | Application use cases |
-| PWManager.Infra | SQLite/EF Core persistence and encryption |
+| PWManager.Domain | Entities, repository contracts, and infrastructure abstractions |
+| PWManager.Application | Use cases and use-case contracts |
+| PWManager.Infra | EF Core/SQLite repositories, migrations, encryption, backup, and JSON stores |
 | PWManager | Avalonia views, ViewModels, styles, and desktop services |
 | PWManager.UnitTests | Application, ViewModel, interaction, and persistence tests |
 | PWManager.UITests | Headless UI and rendering tests |
+
+Persistence follows the project's Clean Architecture convention: Domain contains entities, repository contracts, and infrastructure abstractions; Application contains the use cases and their contracts; Infra implements EF Core repositories, migrations, cryptography, backup/restore, and JSON stores. ViewModels depend on Application/Domain contracts; Infra is referenced only by the composition root.
+
+Inside the projects, folders are organized by responsibility: Domain has `Vault`, `Appearance`, `Settings`, and `Abstractions/{Repositories,Infrastructure}`; Application has `UseCases/<Feature>` and `Common`; Infra has `Persistence`, `Security`, and `Configuration`; the UI keeps its composition root in `Composition`.
 
 The UI uses CommunityToolkit.Mvvm, compiled bindings, Inter, FluentTheme, and Material Icons. ViewModels coordinate screen state, the shell transition, filters, and editor validation. Editor drafts are separate from loaded entries.
 

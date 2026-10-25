@@ -1,7 +1,7 @@
 using System;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using PWManager.Application;
+using PWManager.Application.Common;
 
 namespace PWManager.ViewModels;
 

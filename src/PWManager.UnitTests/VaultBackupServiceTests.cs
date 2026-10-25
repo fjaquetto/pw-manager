@@ -1,46 +1,28 @@
 using Microsoft.Data.Sqlite;
-using PWManager.Domain.Model;
-using PWManager.Infra.Context.SQLite;
-using PWManager.Infra.Services;
+using Microsoft.EntityFrameworkCore;
+using PWManager.Domain.Vault;
+using PWManager.Infra.Persistence;
+using PWManager.Infra.Security;
 
 namespace PWManager.UnitTests;
 
-public class VaultBackupServiceTests : IDisposable
+public class VaultBackupServiceTests
 {
-    private readonly string _directory = Path.Combine(Path.GetTempPath(), "pwmanager-backup-" + Guid.NewGuid().ToString("N"));
-    private readonly string _databasePath;
-    private readonly VaultSession _session = new();
-
-    public VaultBackupServiceTests()
-    {
-        Directory.CreateDirectory(_directory);
-        _databasePath = Path.Combine(_directory, "pwmanager.db");
-        _session.Unlock(VaultCrypto.DeriveKey("password", VaultCrypto.CreateSalt(), 1000));
-    }
-
-    public void Dispose()
-    {
-        SqliteConnection.ClearAllPools();
-
-        if (Directory.Exists(_directory))
-        {
-            Directory.Delete(_directory, recursive: true);
-        }
-    }
-
     [Fact]
     public async Task Backup_ProducesASingleConsistentFile()
     {
-        AddEntry("GitHub");
-        var target = Path.Combine(_directory, "backup.db");
-        var service = new VaultBackupService(_databasePath);
+        using var database = await TestDatabase.CreateAsync();
+        AddEntry(database, "GitHub");
+
+        var target = Path.Combine(database.DirectoryPath, "backup.db");
+        var service = database.CreateBackupService();
 
         await service.BackupAsync(target);
 
         Assert.True(File.Exists(target));
         Assert.False(File.Exists(target + "-wal"));
         Assert.False(File.Exists(target + "-shm"));
-        Assert.True(await VaultBackupService.IsValidBackupAsync(target));
+        Assert.True(await service.IsValidBackupAsync(target));
 
         await using var connection = new SqliteConnection($"Data Source={target};Mode=ReadOnly");
         await connection.OpenAsync();
@@ -51,56 +33,92 @@ public class VaultBackupServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Backup_ReplacesAnExistingDestinationAfterSuccess()
+    {
+        using var database = await TestDatabase.CreateAsync();
+        AddEntry(database, "GitHub");
+
+        var target = Path.Combine(database.DirectoryPath, "backup.db");
+        await File.WriteAllTextAsync(target, "old backup");
+        var service = database.CreateBackupService();
+
+        await service.BackupAsync(target);
+
+        Assert.True(await service.IsValidBackupAsync(target));
+        Assert.False(Directory.EnumerateFiles(database.DirectoryPath, "*.tmp-*").Any());
+    }
+
+    [Fact]
     public async Task Restore_ReplacesTheVaultAndKeepsASafetyCopy()
     {
-        AddEntry("GitHub");
-        var backup = Path.Combine(_directory, "backup.db");
-        var service = new VaultBackupService(_databasePath);
+        using var database = await TestDatabase.CreateAsync();
+        AddEntry(database, "GitHub");
+
+        var backup = Path.Combine(database.DirectoryPath, "backup.db");
+        var service = database.CreateBackupService();
         await service.BackupAsync(backup);
 
-        AddEntry("GitLab");
-        Assert.Equal(2, CountEntries());
+        AddEntry(database, "GitLab");
+        Assert.Equal(2, CountEntries(database));
 
         var safetyCopy = await service.RestoreAsync(backup);
 
-        Assert.Equal(1, CountEntries());
+        Assert.Equal(1, CountEntries(database));
         Assert.True(File.Exists(safetyCopy));
         Assert.Equal(2, CountEntries(safetyCopy));
-        Assert.False(File.Exists(_databasePath + "-wal"));
+        Assert.False(File.Exists(database.DatabasePath + "-wal"));
     }
 
     [Fact]
     public async Task Backup_RefusesToOverwriteTheLiveDatabase()
     {
-        AddEntry("GitHub");
-        var service = new VaultBackupService(_databasePath);
+        using var database = await TestDatabase.CreateAsync();
+        AddEntry(database, "GitHub");
+        var service = database.CreateBackupService();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => service.BackupAsync(_databasePath));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.BackupAsync(database.DatabasePath));
     }
 
     [Fact]
     public async Task Restore_RejectsFilesThatAreNotVaults()
     {
-        var foreign = Path.Combine(_directory, "foreign.db");
+        using var database = await TestDatabase.CreateAsync();
+        AddEntry(database, "GitHub");
+        var foreign = Path.Combine(database.DirectoryPath, "foreign.db");
         await File.WriteAllTextAsync(foreign, "this is not a database");
-        var service = new VaultBackupService(_databasePath);
+        var service = database.CreateBackupService();
 
-        Assert.False(await VaultBackupService.IsValidBackupAsync(foreign));
+        Assert.False(await service.IsValidBackupAsync(foreign));
         await Assert.ThrowsAsync<InvalidDataException>(() => service.RestoreAsync(foreign));
+        Assert.Equal(1, CountEntries(database));
     }
 
-    private void AddEntry(string site)
+    private static void AddEntry(TestDatabase database, string site)
     {
-        using var context = new PWDbContext(_databasePath);
-        context.Database.EnsureCreated();
-        VaultSchemaInitializer.CreateVaultMetadataTableIfMissing(context);
-        context.User.Add(new UserEncryptorService(_session).EncryptUser(new User(site, "login", "secret")));
+        var session = new VaultSession();
+        session.Unlock(VaultCrypto.DeriveKey("password", VaultCrypto.CreateSalt(), 1000));
+
+        using var context = database.CreateContext();
+        context.Users.Add(new UserEncryptorService(session, new VaultCipherService())
+            .EncryptUser(new User(site, "login", "secret")));
         context.SaveChanges();
     }
 
-    private int CountEntries(string? path = null)
+    private static int CountEntries(TestDatabase database)
     {
-        using var context = new PWDbContext(path ?? _databasePath);
-        return context.User.Count();
+        using var context = database.CreateContext();
+
+        return context.Users.Count();
+    }
+
+    private static int CountEntries(string path)
+    {
+        var options = new DbContextOptionsBuilder<PWDbContext>()
+            .UseSqlite($"Data Source={path}")
+            .Options;
+
+        using var context = new PWDbContext(options);
+
+        return context.Users.Count();
     }
 }

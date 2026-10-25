@@ -1,7 +1,7 @@
-using PWManager.Application.DataContracts;
-using PWManager.Application.Enums;
-using PWManager.Domain.DataContracts.InfraService;
-using PWManager.Domain.Model;
+using PWManager.Application.UseCases.Maintenance;
+using PWManager.Application.UseCases.Rekey;
+using PWManager.Application.UseCases.Settings;
+using PWManager.Domain.Settings;
 using PWManager.Services.Interfaces;
 
 namespace PWManager.UITests.Fakes;
@@ -20,7 +20,7 @@ internal sealed class RekeyStub : IVaultRekeyService
     public Task<RekeyResult> ChangeMasterPasswordAsync(string currentPassword, string newPassword) => Task.FromResult(Result);
 }
 
-internal sealed class BackupStub : IVaultBackupService
+internal sealed class BackupStub : IVaultMaintenanceService
 {
     public string? LastBackupPath { get; private set; }
 

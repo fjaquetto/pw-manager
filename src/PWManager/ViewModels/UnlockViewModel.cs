@@ -2,9 +2,7 @@ using System;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using PWManager.Application.DataContracts;
-using PWManager.Application.Enums;
-using PWManager.Domain.Model;
+using PWManager.Application.UseCases.Unlock;
 using PWManager.Services;
 using PWManager.Services.Interfaces;
 

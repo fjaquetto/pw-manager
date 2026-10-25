@@ -1,5 +1,5 @@
-using PWManager.Domain.Model;
-using PWManager.Infra.Config;
+using PWManager.Domain.Settings;
+using PWManager.Infra.Configuration;
 
 namespace PWManager.UnitTests;
 

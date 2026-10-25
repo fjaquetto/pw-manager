@@ -271,3 +271,4 @@ Logs
 *.db
 *.db-shm
 *.db-wal
+.dev/

@@ -1,9 +1,8 @@
-using System.Linq.Expressions;
-using PWManager.Application;
-using PWManager.Domain.DataContracts.InfraService;
-using PWManager.Domain.DataContracts.Repository;
-using PWManager.Domain.Model;
-using PWManager.Infra.Config;
+using PWManager.Application.UseCases.VaultEntries;
+using PWManager.Domain.Abstractions.Infrastructure;
+using PWManager.Domain.Abstractions.Repositories;
+using PWManager.Domain.Vault;
+using PWManager.Infra.Configuration;
 using PWManager.Services;
 using PWManager.Services.Interfaces;
 using PWManager.UITests.Fakes;
@@ -17,13 +16,11 @@ internal sealed class MemoryVault : IUserRepository, IUserEncryptorService, ICli
 
     public string? CopiedText { get; private set; }
 
-    public Task<IEnumerable<User>> GetAllAsync() => Task.FromResult<IEnumerable<User>>(Users.ToArray());
-
-    public Task<User> GetAsync(Expression<Func<User, bool>> predicate) => Task.FromResult(Users.FirstOrDefault(predicate.Compile()))!;
+    public Task<IReadOnlyList<User>> GetAllAsync() => Task.FromResult<IReadOnlyList<User>>(Users.ToArray());
 
     public Task<bool> AnyAsync() => Task.FromResult(Users.Count > 0);
 
-    public Task<User> GetUserByIdAsync(Guid id) => Task.FromResult(Users.FirstOrDefault(u => u.Id == id)!);
+    public Task<User?> GetUserByIdAsync(Guid id) => Task.FromResult(Users.FirstOrDefault(user => user.Id == id));
 
     public Task AddAsync(User user)
     {
@@ -34,7 +31,7 @@ internal sealed class MemoryVault : IUserRepository, IUserEncryptorService, ICli
 
     public Task UpdateAsync(User user)
     {
-        Users.RemoveAll(u => u.Id == user.Id);
+        Users.RemoveAll(existing => existing.Id == user.Id);
         Users.Add(user);
 
         return Task.CompletedTask;
@@ -42,7 +39,7 @@ internal sealed class MemoryVault : IUserRepository, IUserEncryptorService, ICli
 
     public Task DeleteAsync(User user)
     {
-        Users.RemoveAll(u => u.Id == user.Id);
+        Users.RemoveAll(existing => existing.Id == user.Id);
 
         return Task.CompletedTask;
     }
@@ -75,17 +72,20 @@ internal sealed class MemoryVault : IUserRepository, IUserEncryptorService, ICli
 
     public FilePickerStub FilePicker { get; } = new();
 
-    public MainViewModel CreateViewModel() => new(
-        new VaultEntryService(this, this, TimeProvider.System),
-        this,
-        TimeProvider.System,
-        new ThemeService(),
-        new ColorThemeStore(ThemeDirectory),
-        Settings,
-        Rekey,
-        Backup,
-        FilePicker,
-        new AppInfo("2.3.1", "3481920"));
+    public MainViewModel CreateViewModel()
+    {
+        var themeSettings = new ThemeSettingsViewModel(new ThemeService(), new ColorThemeStore(ThemeDirectory));
+        var securitySettings = new SecuritySettingsViewModel(Settings, Rekey, Backup, FilePicker);
+
+        return new MainViewModel(
+            new VaultEntryService(this, this, TimeProvider.System),
+            this,
+            TimeProvider.System,
+            Settings,
+            themeSettings,
+            securitySettings,
+            new AppInfo("2.3.1", "3481920"));
+    }
 
     private static string ThemeDirectory => Path.Combine(Path.GetTempPath(), "pwmanager-ui-themes-unused");
 

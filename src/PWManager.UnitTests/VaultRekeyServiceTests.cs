@@ -1,125 +1,80 @@
-using System.Security.Cryptography;
-using Microsoft.Data.Sqlite;
-using PWManager.Application;
-using PWManager.Application.Enums;
-using PWManager.Domain.DataContracts.Repository;
-using PWManager.Domain.Model;
-using PWManager.Infra.Context.SQLite;
-using PWManager.Infra.Repository;
-using PWManager.Infra.Services;
+using PWManager.Application.UseCases.Migration;
+using PWManager.Application.UseCases.Rekey;
+using PWManager.Domain.Abstractions.Infrastructure;
+using PWManager.Domain.Vault;
+using PWManager.Infra.Security;
 
 namespace PWManager.UnitTests;
 
-public class VaultRekeyServiceTests : IDisposable
+public class VaultRekeyServiceTests
 {
     private const int TestIterations = 1000;
-
-    private readonly string _directory = Path.Combine(Path.GetTempPath(), "pwmanager-rekey-" + Guid.NewGuid().ToString("N"));
-    private readonly string _databasePath;
-    private readonly VaultSession _session = new();
-    private readonly VaultRekeyService _service;
-    private byte[] _oldKey = Array.Empty<byte>();
-    private string _oldSalt = string.Empty;
-
-    public VaultRekeyServiceTests()
-    {
-        Directory.CreateDirectory(_directory);
-        _databasePath = Path.Combine(_directory, "pwmanager.db");
-
-        var factory = new PWDbContextFactory(_databasePath);
-        using (var context = new PWDbContext(_databasePath))
-        {
-            context.Database.EnsureCreated();
-            VaultSchemaInitializer.CreateVaultMetadataTableIfMissing(context);
-
-            var salt = VaultCrypto.CreateSalt();
-            _oldSalt = Convert.ToBase64String(salt);
-            _oldKey = VaultCrypto.DeriveKey("current-password", salt, TestIterations);
-            context.VaultMetadata.Add(new VaultMetadata
-            {
-                Id = 1,
-                KdfSalt = _oldSalt,
-                KdfIterations = TestIterations,
-                Verifier = VaultCrypto.CreateVerifier(_oldKey)
-            });
-            context.User.Add(new UserEncryptorService(Unlocked(_oldKey)).EncryptUser(new User("GitHub", "alice", "secret")));
-            context.SaveChanges();
-        }
-
-        _session.Unlock(_oldKey);
-
-        _service = new VaultRekeyService(
-            new VaultMetadataRepository(factory.CreateDbContext()),
-            new VaultKeyService(),
-            new VaultDataMigrator(factory),
-            _session);
-    }
-
-    public void Dispose()
-    {
-        SqliteConnection.ClearAllPools();
-
-        if (Directory.Exists(_directory))
-        {
-            Directory.Delete(_directory, recursive: true);
-        }
-    }
 
     [Fact]
     public async Task Change_ReencryptsEverythingAndSwapsTheSessionKey()
     {
-        var result = await _service.ChangeMasterPasswordAsync("current-password", "new-password");
+        using var database = await TestDatabase.CreateAsync();
+        var (service, session, oldKey, oldSalt) = await CreateVaultAsync(database, "current-password");
+
+        var result = await service.ChangeMasterPasswordAsync("current-password", "new-password");
 
         Assert.Equal(RekeyResult.Success, result);
-        Assert.False(File.Exists(_databasePath + ".rekey.bak"));
+        Assert.False(File.Exists(database.DatabasePath + ".rekey.bak"));
 
-        using var context = new PWDbContext(_databasePath);
+        await using var context = database.CreateContext();
         var metadata = context.VaultMetadata.Single();
 
-        Assert.NotEqual(_oldSalt, metadata.KdfSalt);
+        Assert.NotEqual(oldSalt, metadata.KdfSalt);
         Assert.Equal(VaultMetadata.DefaultIterations, metadata.KdfIterations);
-        Assert.True(VaultCrypto.VerifyKey(_session.GetKey(), metadata.Verifier));
+        Assert.True(VaultCrypto.VerifyKey(session.GetKey(), metadata.Verifier));
 
-        var entry = context.User.Single();
+        var entry = context.Users.Single();
 
-        Assert.Equal("GitHub", VaultCrypto.Decrypt(_session.GetKey(), entry.Site));
-        Assert.Equal("alice", VaultCrypto.Decrypt(_session.GetKey(), entry.Login));
-        Assert.Equal("secret", VaultCrypto.Decrypt(_session.GetKey(), entry.Password));
-        Assert.ThrowsAny<CryptographicException>(() => VaultCrypto.Decrypt(_oldKey, entry.Site));
+        Assert.Equal("GitHub", VaultCrypto.Decrypt(session.GetKey(), entry.Site));
+        Assert.Equal("alice", VaultCrypto.Decrypt(session.GetKey(), entry.Login));
+        Assert.Equal("secret", VaultCrypto.Decrypt(session.GetKey(), entry.Password));
+        Assert.ThrowsAny<System.Security.Cryptography.CryptographicException>(() => VaultCrypto.Decrypt(oldKey, entry.Site));
+    }
+
+    [Fact]
+    public async Task Change_StaleRekeyBackup_DoesNotBlockTheOperation()
+    {
+        using var database = await TestDatabase.CreateAsync();
+        var (service, _, _, _) = await CreateVaultAsync(database, "current-password");
+        await File.WriteAllTextAsync(database.DatabasePath + ".rekey.bak", "stale");
+
+        var result = await service.ChangeMasterPasswordAsync("current-password", "new-password");
+
+        Assert.Equal(RekeyResult.Success, result);
+        Assert.False(File.Exists(database.DatabasePath + ".rekey.bak"));
     }
 
     [Fact]
     public async Task Change_RejectsTheWrongCurrentPassword()
     {
-        var result = await _service.ChangeMasterPasswordAsync("wrong-password", "new-password");
+        using var database = await TestDatabase.CreateAsync();
+        var (service, session, oldKey, _) = await CreateVaultAsync(database, "current-password");
+
+        var result = await service.ChangeMasterPasswordAsync("wrong-password", "new-password");
 
         Assert.Equal(RekeyResult.InvalidCurrentPassword, result);
 
-        using var context = new PWDbContext(_databasePath);
-        var entry = context.User.Single();
+        await using var context = database.CreateContext();
+        var entry = context.Users.Single();
 
-        Assert.Equal("GitHub", VaultCrypto.Decrypt(_oldKey, entry.Site));
-        Assert.True(VaultCrypto.VerifyKey(_oldKey, context.VaultMetadata.Single().Verifier));
+        Assert.Equal("GitHub", VaultCrypto.Decrypt(oldKey, entry.Site));
+        Assert.True(VaultCrypto.VerifyKey(oldKey, context.VaultMetadata.Single().Verifier));
+        Assert.True(session.IsUnlocked);
     }
 
     [Fact]
     public async Task Change_WithoutMetadata_IsUnavailable()
     {
-        var directory = Path.Combine(_directory, "empty");
-        Directory.CreateDirectory(directory);
-        var path = Path.Combine(directory, "empty.db");
-        var factory = new PWDbContextFactory(path);
-
-        using (var context = new PWDbContext(path))
-        {
-            context.Database.EnsureCreated();
-            VaultSchemaInitializer.CreateVaultMetadataTableIfMissing(context);
-        }
-
+        using var database = await TestDatabase.CreateAsync();
         var service = new VaultRekeyService(
-            new VaultMetadataRepository(factory.CreateDbContext()),
+            database.CreateMetadataRepository(),
             new VaultKeyService(),
-            new VaultDataMigrator(factory),
+            CreateMigrationService(database),
             new VaultSession());
 
         Assert.Equal(RekeyResult.Unavailable, await service.ChangeMasterPasswordAsync("a", "b"));
@@ -128,31 +83,67 @@ public class VaultRekeyServiceTests : IDisposable
     [Fact]
     public async Task Change_WithCorruptData_RollsBackAndKeepsTheOldState()
     {
-        using (var context = new PWDbContext(_databasePath))
+        using var database = await TestDatabase.CreateAsync();
+        var (service, _, oldKey, _) = await CreateVaultAsync(database, "current-password");
+
+        await using (var context = database.CreateContext())
         {
-            context.User.Single().Login = "corrupt-not-v2";
-            context.SaveChanges();
+            context.Users.Single().Login = "corrupt-not-v2";
+            await context.SaveChangesAsync();
         }
 
-        var result = await _service.ChangeMasterPasswordAsync("current-password", "new-password");
+        var result = await service.ChangeMasterPasswordAsync("current-password", "new-password");
 
         Assert.Equal(RekeyResult.Unavailable, result);
 
-        using (var context = new PWDbContext(_databasePath))
+        await using (var context = database.CreateContext())
         {
-            var entry = context.User.Single();
+            var entry = context.Users.Single();
 
             Assert.Equal("corrupt-not-v2", entry.Login);
-            Assert.Equal("GitHub", VaultCrypto.Decrypt(_oldKey, entry.Site));
-            Assert.True(VaultCrypto.VerifyKey(_oldKey, context.VaultMetadata.Single().Verifier));
+            Assert.Equal("GitHub", VaultCrypto.Decrypt(oldKey, entry.Site));
+            Assert.True(VaultCrypto.VerifyKey(oldKey, context.VaultMetadata.Single().Verifier));
         }
     }
 
-    private static VaultSession Unlocked(byte[] key)
+    private static async Task<(VaultRekeyService Service, VaultSession Session, byte[] OldKey, string OldSalt)> CreateVaultAsync(
+        TestDatabase database,
+        string password)
     {
         var session = new VaultSession();
-        session.Unlock(key);
+        var salt = VaultCrypto.CreateSalt();
+        var oldSalt = Convert.ToBase64String(salt);
+        var oldKey = VaultCrypto.DeriveKey(password, salt, TestIterations);
+        session.Unlock(oldKey);
 
-        return session;
+        await using (var context = database.CreateContext())
+        {
+            context.VaultMetadata.Add(new VaultMetadata
+            {
+                Id = 1,
+                KdfSalt = oldSalt,
+                KdfIterations = TestIterations,
+                Verifier = VaultCrypto.CreateVerifier(oldKey)
+            });
+            context.Users.Add(new UserEncryptorService(session, new VaultCipherService()).EncryptUser(new User("GitHub", "alice", "secret")));
+            await context.SaveChangesAsync();
+        }
+
+        var service = new VaultRekeyService(
+            database.CreateMetadataRepository(),
+            new VaultKeyService(),
+            CreateMigrationService(database),
+            session);
+
+        return (service, session, oldKey, oldSalt);
+    }
+
+    private static VaultMigrationService CreateMigrationService(TestDatabase database)
+    {
+        return new VaultMigrationService(
+            database.CreateMigrationRepository(),
+            database.CreateBackupService(),
+            new VaultCipherService(),
+            new LegacyVaultCipherService());
     }
 }

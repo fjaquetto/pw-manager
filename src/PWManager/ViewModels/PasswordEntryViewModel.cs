@@ -1,6 +1,6 @@
 using System;
 using CommunityToolkit.Mvvm.ComponentModel;
-using PWManager.Domain.Model;
+using PWManager.Domain.Vault;
 
 namespace PWManager.ViewModels;
 

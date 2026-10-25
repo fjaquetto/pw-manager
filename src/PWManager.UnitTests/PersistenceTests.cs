@@ -1,54 +1,33 @@
 using Microsoft.EntityFrameworkCore;
 using Moq;
-using PWManager.Application;
-using PWManager.Application.DataContracts;
-using PWManager.Application.Enums;
-using PWManager.Domain.DataContracts.InfraService;
-using PWManager.Domain.Model;
-using PWManager.Infra.Config;
-using PWManager.Infra.Context.SQLite;
-using PWManager.Infra.Repository;
-using PWManager.Infra.Services;
+using PWManager.Application.UseCases.Migration;
+using PWManager.Application.UseCases.Settings;
+using PWManager.Application.UseCases.Unlock;
+using PWManager.Application.UseCases.VaultEntries;
+using PWManager.Application.UseCases.Maintenance;
+using PWManager.Application.UseCases.Rekey;
+using PWManager.Domain.Abstractions.Infrastructure;
+using PWManager.Domain.Vault;
+using PWManager.Infra.Configuration;
+using PWManager.Infra.Security;
 using PWManager.Services.Interfaces;
 using PWManager.ViewModels;
 
 namespace PWManager.UnitTests;
 
-public class PersistenceTests : IDisposable
+public class PersistenceTests
 {
-    private readonly string _directory = Path.Combine(Path.GetTempPath(), "pwmanager-test-" + Guid.NewGuid().ToString("N"));
-    private readonly string _path;
-
-    public PersistenceTests()
-    {
-        Directory.CreateDirectory(_directory);
-        _path = Path.Combine(_directory, "vault.db");
-    }
-
-    public void Dispose()
-    {
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-
-        if (Directory.Exists(_directory))
-        {
-            Directory.Delete(_directory, recursive: true);
-        }
-    }
-
     [Fact]
     public async Task TemporarySqlite_CreateEditReopenDelete_PreservesEncryptionAndDates()
     {
+        using var database = await TestDatabase.CreateAsync();
         var session = CreateUnlockedSession("Only-a-test-master-password");
 
         Guid id;
         DateTime created;
 
-        using (var context = CreateContext())
+        using (var viewModel = CreateViewModel(database, session))
         {
-            var repository = new UserRepository(context);
-            var vaultService = new VaultEntryService(repository, new UserEncryptorService(session), TimeProvider.System);
-            using var viewModel = CreateViewModel(vaultService);
-
             await viewModel.LoadEntriesAsync();
             viewModel.NewEntryCommand.Execute(null);
             viewModel.Editor.Site = "Test account";
@@ -60,8 +39,9 @@ public class PersistenceTests : IDisposable
             Assert.False(viewModel.Notification.IsError);
             id = viewModel.SelectedEntry!.Id;
             created = viewModel.SelectedEntry.CreationDate;
-            var encrypted = await repository.GetUserByIdAsync(id);
+            var encrypted = await database.CreateUserRepository().GetUserByIdAsync(id);
 
+            Assert.NotNull(encrypted);
             Assert.True(VaultCrypto.IsV2(encrypted.Site));
             Assert.NotEqual("Test account", encrypted.Site);
             Assert.NotEqual("alex@example.com", encrypted.Login);
@@ -74,12 +54,8 @@ public class PersistenceTests : IDisposable
             Assert.Equal(created, viewModel.SelectedEntry!.CreationDate);
         }
 
-        using (var context = CreateContext())
+        using (var viewModel = CreateViewModel(database, session))
         {
-            var repository = new UserRepository(context);
-            var vaultService = new VaultEntryService(repository, new UserEncryptorService(session), TimeProvider.System);
-            using var viewModel = CreateViewModel(vaultService);
-
             await viewModel.LoadEntriesAsync();
             var restored = Assert.Single(viewModel.Entries);
 
@@ -92,18 +68,16 @@ public class PersistenceTests : IDisposable
 
             await viewModel.ConfirmDeleteCommand.ExecuteAsync(null);
 
-            Assert.Empty(await repository.GetAllAsync());
+            Assert.Empty(await database.CreateUserRepository().GetAllAsync());
         }
     }
 
     [Fact]
     public async Task UnlockService_EmptyVault_CreatesV2MetadataAndUnlocks()
     {
+        using var database = await TestDatabase.CreateAsync();
         var session = new VaultSession();
-        var service = CreateUnlockService(session);
-        using (CreateContext())
-        {
-        }
+        var service = CreateUnlockService(database, session);
 
         Assert.Equal(VaultStatus.New, await service.GetStatusAsync());
         Assert.Equal(UnlockResult.Success, await service.UnlockAsync("first-example-password"));
@@ -111,7 +85,7 @@ public class PersistenceTests : IDisposable
         Assert.True(session.IsUnlocked);
         Assert.Equal(VaultStatus.Existing, await service.GetStatusAsync());
 
-        using var context = CreateContext();
+        await using var context = database.CreateContext();
         var metadata = Assert.Single(context.VaultMetadata.ToList());
 
         Assert.Equal(VaultMetadata.CurrentFormatVersion, metadata.FormatVersion);
@@ -123,16 +97,14 @@ public class PersistenceTests : IDisposable
     [Fact]
     public async Task UnlockService_ExistingV2Vault_RequiresTheCorrectPassword()
     {
-        using (CreateContext())
-        {
-        }
-
+        using var database = await TestDatabase.CreateAsync();
         var creator = new VaultSession();
-        var createService = CreateUnlockService(creator);
+        var createService = CreateUnlockService(database, creator);
+
         Assert.Equal(UnlockResult.Success, await createService.UnlockAsync("correct-example"));
 
         var session = new VaultSession();
-        var service = CreateUnlockService(session);
+        var service = CreateUnlockService(database, session);
 
         Assert.Equal(VaultStatus.Existing, await service.GetStatusAsync());
         Assert.Equal(UnlockResult.InvalidPassword, await service.UnlockAsync("wrong-example"));
@@ -144,26 +116,28 @@ public class PersistenceTests : IDisposable
     [Fact]
     public async Task UnlockService_MigratesLegacyVault_AndIsIdempotent()
     {
+        using var database = await TestDatabase.CreateAsync();
         var legacyEntry = CreateLegacyEntry("correct-example");
         var originalSiteCipher = legacyEntry.Site;
 
-        using (var context = CreateContext())
+        await using (var context = database.CreateContext())
         {
-            context.User.Add(legacyEntry);
+            context.Users.Add(legacyEntry);
             await context.SaveChangesAsync();
         }
 
         var session = new VaultSession();
-        var service = CreateUnlockService(session);
+        var service = CreateUnlockService(database, session);
 
         Assert.Equal(VaultStatus.Existing, await service.GetStatusAsync());
         Assert.Equal(UnlockResult.InvalidPassword, await service.UnlockAsync("wrong-example"));
         Assert.False(session.IsUnlocked);
-        Assert.False(File.Exists(_path + ".migrating.bak"));
+        Assert.False(File.Exists(database.DatabasePath + ".migrating.bak"));
 
-        using (var context = CreateContext())
+        await using (var context = database.CreateContext())
         {
-            var untouched = Assert.Single(context.User.ToList());
+            var untouched = Assert.Single(context.Users.ToList());
+
             Assert.Equal(originalSiteCipher, untouched.Site);
             Assert.Empty(context.VaultMetadata.ToList());
         }
@@ -171,11 +145,11 @@ public class PersistenceTests : IDisposable
         Assert.Equal(UnlockResult.Success, await service.UnlockAsync("correct-example"));
 
         Assert.True(session.IsUnlocked);
-        Assert.False(File.Exists(_path + ".migrating.bak"));
+        Assert.False(File.Exists(database.DatabasePath + ".migrating.bak"));
 
-        using (var context = CreateContext())
+        await using (var context = database.CreateContext())
         {
-            var migrated = Assert.Single(context.User.ToList());
+            var migrated = Assert.Single(context.Users.ToList());
 
             Assert.True(VaultCrypto.IsV2(migrated.Site));
             Assert.Equal("GitHub", VaultCrypto.Decrypt(session.GetKey(), migrated.Site));
@@ -186,57 +160,109 @@ public class PersistenceTests : IDisposable
 
         // A second unlock uses the v2 metadata and does not re-migrate.
         var secondSession = new VaultSession();
-        var secondService = CreateUnlockService(secondSession);
+        var secondService = CreateUnlockService(database, secondSession);
 
         Assert.Equal(UnlockResult.Success, await secondService.UnlockAsync("correct-example"));
 
-        using var finalContext = CreateContext();
-        var stable = Assert.Single(finalContext.User.ToList());
+        await using var finalContext = database.CreateContext();
+        var stable = Assert.Single(finalContext.Users.ToList());
 
         Assert.Equal("GitHub", VaultCrypto.Decrypt(secondSession.GetKey(), stable.Site));
     }
 
     [Fact]
-    public async Task UnlockService_WrongPasswordOnV2Vault_LeavesDataReadable()
+    public async Task UnlockService_StaleMigrationBackup_DoesNotBlockTheNextAttempt()
     {
-        using (CreateContext())
+        using var database = await TestDatabase.CreateAsync();
+        var legacyEntry = CreateLegacyEntry("correct-example");
+
+        await using (var context = database.CreateContext())
         {
+            context.Users.Add(legacyEntry);
+            await context.SaveChangesAsync();
         }
 
+        await File.WriteAllTextAsync(database.DatabasePath + ".migrating.bak", "stale");
+
+        var session = new VaultSession();
+        var service = CreateUnlockService(database, session);
+
+        Assert.Equal(UnlockResult.Success, await service.UnlockAsync("correct-example"));
+        Assert.True(session.IsUnlocked);
+        Assert.False(File.Exists(database.DatabasePath + ".migrating.bak"));
+    }
+
+    [Fact]
+    public async Task UnlockService_WrongPasswordOnV2Vault_LeavesDataReadable()
+    {
+        using var database = await TestDatabase.CreateAsync();
         var creator = new VaultSession();
-        var createService = CreateUnlockService(creator);
+        var createService = CreateUnlockService(database, creator);
+
         Assert.Equal(UnlockResult.Success, await createService.UnlockAsync("correct-example"));
 
         var user = new User("Site", "login", "secret");
-        using (var context = CreateContext())
+        await using (var context = database.CreateContext())
         {
-            context.User.Add(new UserEncryptorService(creator).EncryptUser(user));
+            context.Users.Add(new UserEncryptorService(creator, new VaultCipherService()).EncryptUser(user));
             await context.SaveChangesAsync();
         }
 
         var session = new VaultSession();
-        var service = CreateUnlockService(session);
+        var service = CreateUnlockService(database, session);
 
         Assert.Equal(UnlockResult.InvalidPassword, await service.UnlockAsync("wrong-example"));
         Assert.Equal(UnlockResult.Success, await service.UnlockAsync("correct-example"));
 
-        using var finalContext = CreateContext();
-        var stored = Assert.Single(finalContext.User.ToList());
+        await using var finalContext = database.CreateContext();
+        var stored = Assert.Single(finalContext.Users.ToList());
 
         Assert.Equal("Site", VaultCrypto.Decrypt(session.GetKey(), stored.Site));
         Assert.Equal("secret", VaultCrypto.Decrypt(session.GetKey(), stored.Password));
     }
 
-    private PWDbContext CreateContext()
+    private static MainViewModel CreateViewModel(TestDatabase database, IVaultSession session)
     {
-        var context = new PWDbContext(_path);
-        context.Database.EnsureCreated();
-        VaultSchemaInitializer.CreateVaultMetadataTableIfMissing(context);
+        var settings = new AppSettingsService(
+            new AppSettingsStore(Path.Combine(database.DirectoryPath, "settings")));
+        var themeSettings = new ThemeSettingsViewModel(
+            Mock.Of<IThemeService>(),
+            new ColorThemeStore(Path.Combine(database.DirectoryPath, "themes")));
+        var securitySettings = new SecuritySettingsViewModel(
+            settings,
+            Mock.Of<IVaultRekeyService>(),
+            Mock.Of<IVaultMaintenanceService>(),
+            Mock.Of<IFilePickerService>());
 
-        return context;
+        return new MainViewModel(
+            new VaultEntryService(
+                database.CreateUserRepository(),
+                new UserEncryptorService(session, new VaultCipherService()),
+                TimeProvider.System),
+            Mock.Of<IClipboardService>(),
+            TimeProvider.System,
+            settings,
+            themeSettings,
+            securitySettings,
+            TestAppInfo.Create());
     }
 
-    private VaultSession CreateUnlockedSession(string password)
+    private static UnlockService CreateUnlockService(TestDatabase database, IVaultSession session)
+    {
+        return new UnlockService(
+            database.CreateMetadataRepository(),
+            database.CreateUserRepository(),
+            new VaultKeyService(),
+            new VaultMigrationService(
+                database.CreateMigrationRepository(),
+                database.CreateBackupService(),
+                new VaultCipherService(),
+                new LegacyVaultCipherService()),
+            session,
+            TimeProvider.System);
+    }
+
+    private static VaultSession CreateUnlockedSession(string password)
     {
         var session = new VaultSession();
         session.Unlock(VaultCrypto.DeriveKey(password, VaultCrypto.CreateSalt(), 1000));
@@ -244,39 +270,11 @@ public class PersistenceTests : IDisposable
         return session;
     }
 
-    private MainViewModel CreateViewModel(IVaultEntryService vaultService) => new(
-        vaultService,
-        Mock.Of<IClipboardService>(),
-        TimeProvider.System,
-        Mock.Of<IThemeService>(),
-        new ColorThemeStore(Path.Combine(_directory, "themes")),
-        new AppSettingsService(new AppSettingsStore(Path.Combine(_directory, "settings"))),
-        Mock.Of<IVaultRekeyService>(),
-        Mock.Of<IVaultBackupService>(),
-        Mock.Of<IFilePickerService>(),
-        TestAppInfo.Create());
-
-    private UnlockService CreateUnlockService(IVaultSession session)
-    {
-        var factory = new PWDbContextFactory(_path);
-        var context = factory.CreateDbContext();
-
-        return new UnlockService(
-            new VaultMetadataRepository(context),
-            new UserRepository(context),
-            new VaultKeyService(),
-            new VaultDataMigrator(factory),
-            session,
-            TimeProvider.System);
-    }
-
     private static User CreateLegacyEntry(string password)
     {
-        var user = new User(
+        return new User(
             LegacyVaultCrypto.Encrypt("GitHub", password),
             LegacyVaultCrypto.Encrypt("alice", password),
             LegacyVaultCrypto.Encrypt("secret", password));
-
-        return user;
     }
 }

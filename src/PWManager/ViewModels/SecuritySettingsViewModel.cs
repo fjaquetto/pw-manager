@@ -2,10 +2,10 @@ using System;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using PWManager.Application.DataContracts;
-using PWManager.Application.Enums;
-using PWManager.Domain.DataContracts.InfraService;
-using PWManager.Domain.Model;
+using PWManager.Application.UseCases.Maintenance;
+using PWManager.Application.UseCases.Rekey;
+using PWManager.Application.UseCases.Settings;
+using PWManager.Domain.Settings;
 using PWManager.Services.Interfaces;
 
 namespace PWManager.ViewModels;
@@ -14,19 +14,19 @@ public partial class SecuritySettingsViewModel : ViewModelBase
 {
     private readonly IAppSettingsService _settings;
     private readonly IVaultRekeyService _rekey;
-    private readonly IVaultBackupService _backup;
+    private readonly IVaultMaintenanceService _maintenance;
     private readonly IFilePickerService _filePicker;
     private bool _suppressPersist;
 
     public SecuritySettingsViewModel(
         IAppSettingsService settings,
         IVaultRekeyService rekey,
-        IVaultBackupService backup,
+        IVaultMaintenanceService maintenance,
         IFilePickerService filePicker)
     {
         _settings = settings;
         _rekey = rekey;
-        _backup = backup;
+        _maintenance = maintenance;
         _filePicker = filePicker;
     }
 
@@ -196,7 +196,7 @@ public partial class SecuritySettingsViewModel : ViewModelBase
 
         try
         {
-            await _backup.BackupAsync(target);
+            await _maintenance.BackupAsync(target);
             BackupMessage = $"Backup saved to {target}";
         }
         catch (Exception)
@@ -238,7 +238,7 @@ public partial class SecuritySettingsViewModel : ViewModelBase
 
         try
         {
-            await _backup.RestoreAsync(PendingRestorePath);
+            await _maintenance.RestoreAsync(PendingRestorePath);
             PendingRestorePath = string.Empty;
             VaultRestored?.Invoke();
         }

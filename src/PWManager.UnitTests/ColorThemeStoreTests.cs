@@ -1,6 +1,6 @@
 using System.Text.Json;
-using PWManager.Domain.Model;
-using PWManager.Infra.Config;
+using PWManager.Domain.Appearance;
+using PWManager.Infra.Configuration;
 
 namespace PWManager.UnitTests;
 
