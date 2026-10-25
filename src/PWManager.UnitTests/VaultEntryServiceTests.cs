@@ -1,9 +1,9 @@
 using Microsoft.Extensions.Time.Testing;
 using Moq;
-using PWManager.Application;
-using PWManager.Domain.DataContracts.InfraService;
-using PWManager.Domain.DataContracts.Repository;
-using PWManager.Domain.Model;
+using PWManager.Application.UseCases.VaultEntries;
+using PWManager.Domain.Abstractions.Infrastructure;
+using PWManager.Domain.Abstractions.Repositories;
+using PWManager.Domain.Vault;
 
 namespace PWManager.UnitTests;
 
@@ -101,7 +101,7 @@ public class VaultEntryServiceTests
     [Fact]
     public async Task Update_MissingEntryDoesNotInsertOrReportSuccess()
     {
-        _userRepository.Setup(repository => repository.GetUserByIdAsync(It.IsAny<Guid>())).ReturnsAsync((User)null!);
+        _userRepository.Setup(repository => repository.GetUserByIdAsync(It.IsAny<Guid>())).ReturnsAsync((User?)null);
 
         var savedEntry = await _service.SaveAsync(Guid.NewGuid(), "Site", "login", "password");
 
@@ -132,7 +132,7 @@ public class VaultEntryServiceTests
     {
         var storedEntry = CreateEncryptedEntry();
         _userRepository.Setup(repository => repository.GetUserByIdAsync(storedEntry.Id))
-            .ReturnsAsync(exists ? storedEntry : null!);
+            .ReturnsAsync(exists ? storedEntry : null);
         _userRepository.Setup(repository => repository.DeleteAsync(It.IsAny<User>())).Returns(Task.CompletedTask);
 
         var deleted = await _service.DeleteAsync(storedEntry.Id);

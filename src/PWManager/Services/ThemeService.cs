@@ -4,7 +4,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Themes.Fluent;
-using PWManager.Domain.Model;
+using PWManager.Domain.Appearance;
 using PWManager.Services.Interfaces;
 using AvaloniaApp = Avalonia.Application;
 

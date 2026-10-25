@@ -1,59 +1,40 @@
+using Microsoft.Data.Sqlite;
 using Moq;
-using PWManager.Application;
-using PWManager.Application.DataContracts;
-using PWManager.Application.Enums;
-using PWManager.Domain.DataContracts.Repository;
-using PWManager.Domain.Model;
-using PWManager.Infra.Context.SQLite;
-using PWManager.Infra.Repository;
-using PWManager.Infra.Services;
+using PWManager.Application.UseCases.Bootstrapping;
+using PWManager.Application.UseCases.Migration;
+using PWManager.Application.UseCases.Unlock;
+using PWManager.Domain.Vault;
+using PWManager.Infra.Persistence.Schema;
+using PWManager.Infra.Security;
 
 namespace PWManager.UnitTests;
 
-public class VaultBootstrapperTests : IDisposable
+public class VaultBootstrapperTests
 {
-    private readonly string _directory = Path.Combine(Path.GetTempPath(), "pwmanager-bootstrap-" + Guid.NewGuid().ToString("N"));
-    private readonly string _path;
-    private readonly PWDbContextFactory _factory;
-
-    public VaultBootstrapperTests()
-    {
-        Directory.CreateDirectory(_directory);
-        _path = Path.Combine(_directory, "vault.db");
-        _factory = new PWDbContextFactory(_path);
-    }
-
-    public void Dispose()
-    {
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-
-        if (Directory.Exists(_directory))
-        {
-            Directory.Delete(_directory, recursive: true);
-        }
-    }
-
     [Fact]
     public async Task InitializeAsync_FreshVault_CreatesSchemaAndReportsNew()
     {
-        var status = await CreateBootstrapper().InitializeAsync();
+        using var database = new TestDatabase();
+        var status = await CreateBootstrapper(database).InitializeAsync();
 
         Assert.Equal(VaultStatus.New, status);
-        Assert.True(File.Exists(_path));
+        Assert.True(File.Exists(database.DatabasePath));
 
-        var tables = ReadTableNames();
+        var tables = ReadTableNames(database);
 
         Assert.Contains("User", tables);
         Assert.Contains("VaultMetadata", tables);
+        Assert.Contains("__EFMigrationsHistory", tables);
     }
 
     [Fact]
     public async Task InitializeAsync_ExistingVault_ReportsExisting()
     {
-        await CreateBootstrapper().InitializeAsync();
-        CreateVault("correct-example");
+        using var database = new TestDatabase();
+        await CreateBootstrapper(database).InitializeAsync();
+        CreateVault(database, "correct-example");
 
-        var status = await CreateBootstrapper().InitializeAsync();
+        var status = await CreateBootstrapper(database).InitializeAsync();
 
         Assert.Equal(VaultStatus.Existing, status);
     }
@@ -61,14 +42,16 @@ public class VaultBootstrapperTests : IDisposable
     [Fact]
     public async Task InitializeAsync_VaultWithEntriesButNoMetadata_ReportsExisting()
     {
-        using (var context = _factory.CreateDbContext())
+        using var database = new TestDatabase();
+        await database.MigrateAsync();
+
+        await using (var context = database.CreateContext())
         {
-            context.Database.EnsureCreated();
-            context.User.Add(new User("site", "login", "password"));
-            context.SaveChanges();
+            context.Users.Add(new User("site", "login", "password"));
+            await context.SaveChangesAsync();
         }
 
-        var status = await CreateBootstrapper().InitializeAsync();
+        var status = await CreateBootstrapper(database).InitializeAsync();
 
         Assert.Equal(VaultStatus.Existing, status);
     }
@@ -76,6 +59,7 @@ public class VaultBootstrapperTests : IDisposable
     [Fact(Timeout = 10000)]
     public async Task InitializeAsync_DoesNotRunOnTheCallingThread()
     {
+        using var database = await TestDatabase.CreateAsync();
         var callerThread = Environment.CurrentManagedThreadId;
         using var gate = new ManualResetEventSlim(false);
         var workerThread = 0;
@@ -91,42 +75,43 @@ public class VaultBootstrapperTests : IDisposable
                 return Task.FromResult(VaultStatus.Existing);
             });
 
-        var task = CreateBootstrapper(unlockService.Object).InitializeAsync();
+        var task = CreateBootstrapper(database, unlockService.Object).InitializeAsync();
 
         Assert.False(task.IsCompleted);
-
         gate.Set();
 
         Assert.Equal(VaultStatus.Existing, await task.WaitAsync(TimeSpan.FromSeconds(5)));
         Assert.NotEqual(callerThread, workerThread);
     }
 
-    private VaultBootstrapper CreateBootstrapper(IUnlockService? unlockService = null) =>
-        new(new SqliteVaultSchemaInitializer(_factory), unlockService ?? CreateUnlockService());
+    private static VaultBootstrapper CreateBootstrapper(TestDatabase database, IUnlockService? unlockService = null) =>
+        new(new SqliteVaultSchemaMigrator(database.ContextFactory), unlockService ?? CreateUnlockService(database));
 
-    private UnlockService CreateUnlockService()
+    private static UnlockService CreateUnlockService(TestDatabase database)
     {
-        var context = _factory.CreateDbContext();
-
         return new UnlockService(
-            new VaultMetadataRepository(context),
-            new UserRepository(context),
+            database.CreateMetadataRepository(),
+            database.CreateUserRepository(),
             new VaultKeyService(),
-            new VaultDataMigrator(_factory),
+            new VaultMigrationService(
+                database.CreateMigrationRepository(),
+                database.CreateBackupService(),
+                new VaultCipherService(),
+                new LegacyVaultCipherService()),
             new VaultSession(),
             TimeProvider.System);
     }
 
-    private void CreateVault(string password)
+    private static void CreateVault(TestDatabase database, string password)
     {
-        var result = CreateUnlockService().UnlockAsync(password).GetAwaiter().GetResult();
+        var result = CreateUnlockService(database).UnlockAsync(password).GetAwaiter().GetResult();
 
         Assert.Equal(UnlockResult.Success, result);
     }
 
-    private List<string> ReadTableNames()
+    private static List<string> ReadTableNames(TestDatabase database)
     {
-        using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_path}");
+        using var connection = new SqliteConnection($"Data Source={database.DatabasePath}");
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT name FROM sqlite_master WHERE type = 'table'";

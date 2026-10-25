@@ -6,11 +6,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using PWManager.Application.DataContracts;
-using PWManager.Domain.DataContracts.InfraService;
-using PWManager.Domain.Model;
+using PWManager.Application.UseCases.Settings;
+using PWManager.Application.UseCases.VaultEntries;
+using PWManager.Domain.Vault;
 using PWManager.Enums;
-using PWManager.Infra.Config;
 using PWManager.Services;
 using PWManager.Services.Interfaces;
 
@@ -201,12 +200,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         IVaultEntryService vaultEntries,
         IClipboardService clipboard,
         TimeProvider timeProvider,
-        IThemeService themeService,
-        ColorThemeStore themeStore,
         IAppSettingsService settings,
-        IVaultRekeyService rekeyService,
-        IVaultBackupService backupService,
-        IFilePickerService filePicker,
+        ThemeSettingsViewModel themeSettings,
+        SecuritySettingsViewModel securitySettings,
         AppInfo appInfo)
     {
         _vaultEntries = vaultEntries;
@@ -215,10 +211,10 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         _appInfo = appInfo;
         _timeProvider = timeProvider;
         Notification = new NotificationViewModel(timeProvider);
-        ThemeSettings = new ThemeSettingsViewModel(themeService, themeStore);
+        ThemeSettings = themeSettings;
         ThemeSettings.CloseRequested += CloseThemeSettings;
         ThemeSettings.Saved += () => Notification.Show("Appearance saved.");
-        SecuritySettings = new SecuritySettingsViewModel(settings, rekeyService, backupService, filePicker);
+        SecuritySettings = securitySettings;
         SecuritySettings.CloseRequested += CloseSecuritySettings;
         SecuritySettings.VaultRestored += OnVaultRestored;
     }

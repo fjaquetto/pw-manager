@@ -1,7 +1,5 @@
 using Moq;
-using PWManager.Application.DataContracts;
-using PWManager.Application.Enums;
-using PWManager.Domain.Model;
+using PWManager.Application.UseCases.Unlock;
 using PWManager.ViewModels;
 
 namespace PWManager.UnitTests;

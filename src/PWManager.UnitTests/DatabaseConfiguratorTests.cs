@@ -1,5 +1,5 @@
 using Microsoft.Extensions.Options;
-using PWManager.Infra.Config;
+using PWManager.Infra.Configuration;
 
 namespace PWManager.UnitTests;
 

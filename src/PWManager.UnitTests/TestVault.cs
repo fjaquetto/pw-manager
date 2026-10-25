@@ -1,11 +1,13 @@
 using Microsoft.Extensions.Time.Testing;
 using Moq;
-using PWManager.Application;
-using PWManager.Application.DataContracts;
-using PWManager.Domain.DataContracts.InfraService;
-using PWManager.Domain.DataContracts.Repository;
-using PWManager.Domain.Model;
-using PWManager.Infra.Config;
+using PWManager.Application.UseCases.Settings;
+using PWManager.Application.UseCases.VaultEntries;
+using PWManager.Application.UseCases.Maintenance;
+using PWManager.Application.UseCases.Rekey;
+using PWManager.Domain.Abstractions.Infrastructure;
+using PWManager.Domain.Abstractions.Repositories;
+using PWManager.Domain.Vault;
+using PWManager.Infra.Configuration;
 using PWManager.Services.Interfaces;
 using PWManager.ViewModels;
 
@@ -21,7 +23,7 @@ internal sealed class TestVault
 
     public Mock<IVaultRekeyService> Rekey { get; } = new();
 
-    public Mock<IVaultBackupService> Backup { get; } = new();
+    public Mock<IVaultMaintenanceService> Backup { get; } = new();
 
     public Mock<IFilePickerService> FilePicker { get; } = new();
 
@@ -36,29 +38,32 @@ internal sealed class TestVault
     public TestVault(params User[] users)
     {
         Users.AddRange(users);
-        UserRepository.Setup(repository => repository.GetAllAsync()).ReturnsAsync(() => Users.ToArray());
-        UserRepository.Setup(repository => repository.GetUserByIdAsync(It.IsAny<Guid>())).ReturnsAsync((Guid id) => Users.FirstOrDefault(u => u.Id == id)!);
+        UserRepository.Setup(repository => repository.GetAllAsync())
+            .ReturnsAsync(() => (IReadOnlyList<User>)Users.ToArray());
+        UserRepository.Setup(repository => repository.GetUserByIdAsync(It.IsAny<Guid>()))
+            .ReturnsAsync((Guid id) => Users.FirstOrDefault(user => user.Id == id));
         UserRepository.Setup(repository => repository.AddAsync(It.IsAny<User>())).Callback<User>(Users.Add).Returns(Task.CompletedTask);
         UserRepository.Setup(repository => repository.UpdateAsync(It.IsAny<User>())).Callback<User>(user =>
         {
-            Users.RemoveAll(u => u.Id == user.Id);
+            Users.RemoveAll(existing => existing.Id == user.Id);
             Users.Add(user);
         }).Returns(Task.CompletedTask);
-        UserRepository.Setup(repository => repository.DeleteAsync(It.IsAny<User>())).Callback<User>(user => Users.RemoveAll(u => u.Id == user.Id)).Returns(Task.CompletedTask);
-        Encryptor.Setup(e => e.EncryptUser(It.IsAny<User>())).Returns((User u) => u);
-        Encryptor.Setup(e => e.DecryptUser(It.IsAny<User>())).Returns((User u) => u);
-        Clipboard.Setup(c => c.SetTextAsync(It.IsAny<string>())).ReturnsAsync(true);
+        UserRepository.Setup(repository => repository.DeleteAsync(It.IsAny<User>())).Callback<User>(user => Users.RemoveAll(existing => existing.Id == user.Id)).Returns(Task.CompletedTask);
+        Encryptor.Setup(encryptor => encryptor.EncryptUser(It.IsAny<User>())).Returns((User user) => user);
+        Encryptor.Setup(encryptor => encryptor.DecryptUser(It.IsAny<User>())).Returns((User user) => user);
+        Clipboard.Setup(clipboard => clipboard.SetTextAsync(It.IsAny<string>())).ReturnsAsync(true);
         Settings = new AppSettingsService(new AppSettingsStore(Path.Combine(Path.GetTempPath(), "pwmanager-tests-settings-" + Guid.NewGuid().ToString("N"))));
+
+        var themeSettings = new ThemeSettingsViewModel(Mock.Of<IThemeService>(), new ColorThemeStore(UnusedThemeDirectory));
+        var securitySettings = new SecuritySettingsViewModel(Settings, Rekey.Object, Backup.Object, FilePicker.Object);
+
         ViewModel = new(
             new VaultEntryService(UserRepository.Object, Encryptor.Object, Time),
             Clipboard.Object,
             Time,
-            Mock.Of<IThemeService>(),
-            new ColorThemeStore(UnusedThemeDirectory),
             Settings,
-            Rekey.Object,
-            Backup.Object,
-            FilePicker.Object,
+            themeSettings,
+            securitySettings,
             TestAppInfo.Create());
     }
 

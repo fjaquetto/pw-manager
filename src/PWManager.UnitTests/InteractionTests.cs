@@ -1,8 +1,7 @@
 using Microsoft.Extensions.Time.Testing;
 using Moq;
-using PWManager.Application.DataContracts;
-using PWManager.Application.Enums;
-using PWManager.Domain.Model;
+using PWManager.Application.UseCases.Unlock;
+using PWManager.Domain.Vault;
 using PWManager.ViewModels;
 
 namespace PWManager.UnitTests;

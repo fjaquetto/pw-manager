@@ -1,6 +1,6 @@
 using Moq;
-using PWManager.Domain.Model;
-using PWManager.Infra.Config;
+using PWManager.Domain.Appearance;
+using PWManager.Infra.Configuration;
 using PWManager.Services.Interfaces;
 using PWManager.ViewModels;
 
