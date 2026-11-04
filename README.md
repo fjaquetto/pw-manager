@@ -104,16 +104,16 @@ PWMANAGER_DB_PATH=.dev/pwmanager.db \
 To produce a self-contained Windows package locally:
 
 ```bash
-dotnet publish src/PWManager/PWManager.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish
+dotnet publish src/PWManager/PWManager.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish/PWManager
 ```
 
 To produce a self-contained Linux package locally:
 
 ```bash
-dotnet publish src/PWManager/PWManager.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish
+dotnet publish src/PWManager/PWManager.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish/PWManager
 ```
 
-Run `publish/PWManager.exe` on Windows or `./publish/PWManager` on Linux, and keep the generated `appsettings.json` alongside the executable.
+Release archives and these local commands place the executable and its dependencies inside a `PWManager` folder. Run `publish/PWManager/PWManager.exe` on Windows or `./publish/PWManager/PWManager` on Linux, and keep the generated `appsettings.json` alongside the executable.
 
 ### Application icon on Linux
 
