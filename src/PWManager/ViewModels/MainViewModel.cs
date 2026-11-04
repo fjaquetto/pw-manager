@@ -217,6 +217,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         SecuritySettings = securitySettings;
         SecuritySettings.CloseRequested += CloseSecuritySettings;
         SecuritySettings.VaultRestored += OnVaultRestored;
+        SecuritySettings.VaultImported += OnVaultImported;
     }
 
     private void RefreshState()
@@ -935,11 +936,13 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         FocusRequested?.Invoke(IsEditorOpen ? "EditorSite" : "OpenSecuritySettings");
     }
 
-    private void OnVaultRestored()
+    private void OnVaultRestored(string? safetyCopyPath)
     {
         CloseSecuritySettings();
-        LockRequested?.Invoke("Backup restored. Unlock with the master password of that backup.");
+        LockRequested?.Invoke(RestoreVaultViewModel.NoticeFor(safetyCopyPath));
     }
+
+    private void OnVaultImported() => _ = LoadEntriesAsync();
 
     [RelayCommand]
     private void RequestLock() => LockRequested?.Invoke(null);

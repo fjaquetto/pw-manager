@@ -70,12 +70,14 @@ internal sealed class MemoryVault : IUserRepository, IUserEncryptorService, ICli
 
     public BackupStub Backup { get; } = new();
 
+    public ImportStub Import { get; } = new();
+
     public FilePickerStub FilePicker { get; } = new();
 
-    public MainViewModel CreateViewModel()
+    public MainViewModel CreateViewModel(ImportVaultViewModel? import = null)
     {
         var themeSettings = new ThemeSettingsViewModel(new ThemeService(), new ColorThemeStore(ThemeDirectory));
-        var securitySettings = new SecuritySettingsViewModel(Settings, Rekey, Backup, FilePicker);
+        var securitySettings = new SecuritySettingsViewModel(Settings, Rekey, Backup, FilePicker, import: import);
 
         return new MainViewModel(
             new VaultEntryService(this, this, TimeProvider.System),

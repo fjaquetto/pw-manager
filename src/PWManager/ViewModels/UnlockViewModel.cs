@@ -8,15 +8,32 @@ using PWManager.Services.Interfaces;
 
 namespace PWManager.ViewModels;
 
-public partial class UnlockViewModel(IUnlockService unlockService, AppInfo appInfo) : ViewModelBase
+public partial class UnlockViewModel : ViewModelBase
 {
     public const int MinimumPasswordLength = 8;
 
-    public string VersionText => $"v{appInfo.Version}";
+    private readonly IUnlockService _unlockService;
+    private readonly AppInfo _appInfo;
 
-    public string VersionToolTip => appInfo.Commit is null
-        ? $"Version {appInfo.Version}"
-        : $"Version {appInfo.Version} · build {appInfo.Commit}";
+    public UnlockViewModel(IUnlockService unlockService, AppInfo appInfo, RestoreVaultViewModel? restore = null)
+    {
+        _unlockService = unlockService;
+        _appInfo = appInfo;
+        Restore = restore;
+
+        if (Restore is not null)
+        {
+            Restore.Restored += OnRestored;
+        }
+    }
+
+    public RestoreVaultViewModel? Restore { get; }
+
+    public string VersionText => $"v{_appInfo.Version}";
+
+    public string VersionToolTip => _appInfo.Commit is null
+        ? $"Version {_appInfo.Version}"
+        : $"Version {_appInfo.Version} · build {_appInfo.Commit}";
 
     [ObservableProperty]
     private string _password = string.Empty;
@@ -33,24 +50,31 @@ public partial class UnlockViewModel(IUnlockService unlockService, AppInfo appIn
     private string _errorMessage = string.Empty;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ButtonLabel), nameof(IsIdle), nameof(ShowProgress), nameof(CanUnlock))]
+    [NotifyPropertyChangedFor(nameof(ButtonLabel), nameof(IsIdle), nameof(ShowProgress), nameof(CanUnlock), nameof(ShowRestore))]
     [NotifyCanExecuteChangedFor(nameof(UnlockCommand))]
     private bool _isBusy;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsIdle), nameof(ShowProgress), nameof(CanUnlock))]
+    [NotifyPropertyChangedFor(nameof(IsIdle), nameof(ShowProgress), nameof(CanUnlock), nameof(ShowRestore))]
     [NotifyCanExecuteChangedFor(nameof(UnlockCommand))]
     private bool _isOpeningVault;
 
     // Submitting is blocked until the shell resolves the status: a new vault must
     // never be created through the unlock flow, which has no confirmation field.
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanUnlock))]
+    [NotifyPropertyChangedFor(
+        nameof(CanUnlock),
+        nameof(ShowRestore),
+        nameof(Heading),
+        nameof(Description),
+        nameof(ButtonLabel),
+        nameof(ShowProgress),
+        nameof(ProgressText))]
     [NotifyCanExecuteChangedFor(nameof(UnlockCommand))]
     private bool _isPreparing = true;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsCreating), nameof(Heading), nameof(Description), nameof(ButtonLabel))]
+    [NotifyPropertyChangedFor(nameof(IsCreating), nameof(ShowRestore), nameof(Heading), nameof(Description), nameof(ButtonLabel))]
     [NotifyCanExecuteChangedFor(nameof(UnlockCommand))]
     private VaultStatus _status = VaultStatus.Existing;
 
@@ -74,17 +98,27 @@ public partial class UnlockViewModel(IUnlockService unlockService, AppInfo appIn
 
     public bool CanUnlock => IsIdle && !IsPreparing;
 
-    public bool ShowProgress => IsBusy || IsOpeningVault;
+    public bool ShowProgress => IsBusy || IsOpeningVault || IsPreparing;
 
-    public string Heading => IsCreating ? "Create your vault" : "Unlock your vault";
+    public bool ShowRestore => IsCreating && Restore is not null && !IsBusy && !IsPreparing;
 
-    public string Description => IsCreating
-        ? "Choose a master password to encrypt your vault. There is no recovery if you forget it."
-        : "Your passwords, right where you left them.";
+    public string ProgressText => IsPreparing ? "Preparing your vault…" : "Unlocking your vault…";
 
-    public string ButtonLabel => IsBusy
-        ? (IsCreating ? "Creating…" : "Unlocking…")
-        : (IsCreating ? "Create vault" : "Unlock vault");
+    public string Heading => IsPreparing
+        ? "Preparing your vault"
+        : IsCreating ? "Create your vault" : "Unlock your vault";
+
+    public string Description => IsPreparing
+        ? "Checking your local vault…"
+        : IsCreating
+            ? "Choose a master password to encrypt your vault. There is no recovery if you forget it."
+            : "Your passwords, right where you left them.";
+
+    public string ButtonLabel => IsPreparing
+        ? "Preparing…"
+        : IsBusy
+            ? (IsCreating ? "Creating…" : "Unlocking…")
+            : (IsCreating ? "Create vault" : "Unlock vault");
 
     public void Configure(VaultStatus status)
     {
@@ -140,7 +174,7 @@ public partial class UnlockViewModel(IUnlockService unlockService, AppInfo appIn
 
         try
         {
-            var result = await unlockService.UnlockAsync(Password);
+            var result = await _unlockService.UnlockAsync(Password);
 
             if (result == UnlockResult.Success)
             {
@@ -174,5 +208,15 @@ public partial class UnlockViewModel(IUnlockService unlockService, AppInfo appIn
         {
             Unlocked?.Invoke();
         }
+    }
+
+    private void OnRestored(string? safetyCopyPath)
+    {
+        Password = string.Empty;
+        ConfirmPassword = string.Empty;
+        IsPasswordVisible = false;
+        Configure(VaultStatus.Existing);
+        ErrorMessage = string.Empty;
+        Notice = RestoreVaultViewModel.NoticeFor(safetyCopyPath);
     }
 }

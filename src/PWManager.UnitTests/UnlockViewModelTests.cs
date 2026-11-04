@@ -1,5 +1,8 @@
 using Moq;
+using PWManager.Application.UseCases.Maintenance;
 using PWManager.Application.UseCases.Unlock;
+using PWManager.Services;
+using PWManager.Services.Interfaces;
 using PWManager.ViewModels;
 
 namespace PWManager.UnitTests;
@@ -36,6 +39,41 @@ public class UnlockViewModelTests
 
         Assert.False(viewModel.HasError);
         service.Verify(s => s.UnlockAsync(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public void ConfigureNew_WithRestoreAvailable_ShowsTheRestoreAction()
+    {
+        var restore = new RestoreVaultViewModel(
+            Mock.Of<IVaultMaintenanceService>(),
+            Mock.Of<IFilePickerService>());
+        var viewModel = new UnlockViewModel(Mock.Of<IUnlockService>(), TestAppInfo.Create(), restore);
+
+        viewModel.Configure(VaultStatus.New);
+
+        Assert.True(viewModel.IsCreating);
+        Assert.True(viewModel.ShowRestore);
+    }
+
+    [Fact]
+    public async Task RestoreFromTheUnlockScreen_ReturnsToExistingModeAndShowsTheNotice()
+    {
+        var maintenance = new Mock<IVaultMaintenanceService>();
+        maintenance.Setup(service => service.RestoreAsync("/tmp/backup.db")).ReturnsAsync("/tmp/safety.bak");
+        var picker = new Mock<IFilePickerService>();
+        picker.Setup(service => service.PickOpenFileAsync(It.IsAny<string>()))
+            .ReturnsAsync(FilePickerResult.Selected("/tmp/backup.db"));
+        var restore = new RestoreVaultViewModel(maintenance.Object, picker.Object);
+        var viewModel = new UnlockViewModel(Mock.Of<IUnlockService>(), TestAppInfo.Create(), restore);
+        viewModel.Configure(VaultStatus.New);
+
+        await restore.ChooseCommand.ExecuteAsync(null);
+        await restore.ConfirmCommand.ExecuteAsync(null);
+
+        Assert.False(viewModel.IsCreating);
+        Assert.False(viewModel.ShowRestore);
+        Assert.Contains("Backup restored", viewModel.Notice);
+        Assert.Contains("/tmp/safety.bak", viewModel.Notice);
     }
 
     [Fact]

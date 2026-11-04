@@ -7,6 +7,8 @@ namespace PWManager.Infra.Persistence.Backup;
 // no plaintext ever leaves the vault.
 public sealed class VaultBackupService(string databasePath) : IVaultBackupService
 {
+    private const long MaxBackupBytes = 1024L * 1024 * 1024;
+
     public string DatabasePath => databasePath;
 
     public async Task BackupAsync(string targetPath)
@@ -56,13 +58,37 @@ public sealed class VaultBackupService(string databasePath) : IVaultBackupServic
 
         try
         {
+            var file = new FileInfo(sourcePath);
+
+            if (file.Length == 0 || file.Length > MaxBackupBytes)
+            {
+                return false;
+            }
+
             await using var connection = new SqliteConnection(BuildConnectionString(sourcePath, readOnly: true));
             await connection.OpenAsync();
+
+            await using var integrity = connection.CreateCommand();
+            integrity.CommandText = "PRAGMA quick_check;";
+
+            if (!string.Equals(Convert.ToString(await integrity.ExecuteScalarAsync()), "ok", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
 
             await using var command = connection.CreateCommand();
             command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'User';";
 
-            return Convert.ToInt64(await command.ExecuteScalarAsync()) > 0;
+            if (Convert.ToInt64(await command.ExecuteScalarAsync()) == 0)
+            {
+                return false;
+            }
+
+            await using var columns = connection.CreateCommand();
+            columns.CommandText =
+                "SELECT COUNT(*) FROM pragma_table_info('User') WHERE name IN ('Site', 'Login', 'Password', 'CreationDate');";
+
+            return Convert.ToInt64(await columns.ExecuteScalarAsync()) == 4;
         }
         catch (SqliteException)
         {
@@ -82,7 +108,7 @@ public sealed class VaultBackupService(string databasePath) : IVaultBackupServic
         }
     }
 
-    public async Task<string> RestoreAsync(string sourcePath)
+    public async Task<string> StageRestoreAsync(string sourcePath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
 
@@ -95,24 +121,46 @@ public sealed class VaultBackupService(string databasePath) : IVaultBackupServic
 
         if (!await IsValidBackupAsync(fullSource))
         {
-            throw new InvalidDataException("The selected file is not a PWManager backup.");
+            throw new InvalidDataException("The selected file is not a valid PWManager vault.");
+        }
+
+        var directory = Path.GetDirectoryName(Path.GetFullPath(databasePath));
+
+        if (!string.IsNullOrEmpty(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        var staged = $"{databasePath}.restore-{Guid.NewGuid():N}.tmp";
+
+        try
+        {
+            File.Copy(fullSource, staged, overwrite: true);
+            return staged;
+        }
+        catch
+        {
+            TryDelete(staged);
+            throw;
+        }
+    }
+
+    public async Task<string> CommitRestoreAsync(string stagedPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(stagedPath);
+
+        var fullStaged = Path.GetFullPath(stagedPath);
+
+        if (!File.Exists(fullStaged))
+        {
+            throw new InvalidDataException("The prepared backup is no longer available.");
         }
 
         var safetyCopy = $"{databasePath}.before-restore-{DateTime.Now:yyyyMMddHHmmss}.bak";
         await BackupAsync(safetyCopy);
 
         SqliteConnection.ClearAllPools();
-        var temporary = $"{databasePath}.restore-{Guid.NewGuid():N}.tmp";
-
-        try
-        {
-            File.Copy(fullSource, temporary, overwrite: true);
-            File.Move(temporary, databasePath, overwrite: true);
-        }
-        finally
-        {
-            TryDelete(temporary);
-        }
+        File.Move(fullStaged, databasePath, overwrite: true);
 
         foreach (var sideFile in new[] { databasePath + "-wal", databasePath + "-shm" })
         {
@@ -120,6 +168,27 @@ public sealed class VaultBackupService(string databasePath) : IVaultBackupServic
         }
 
         return safetyCopy;
+    }
+
+    public Task DiscardStagedAsync(string stagedPath)
+    {
+        TryDelete(stagedPath);
+        return Task.CompletedTask;
+    }
+
+    public async Task<string> RestoreAsync(string sourcePath)
+    {
+        var staged = await StageRestoreAsync(sourcePath);
+
+        try
+        {
+            return await CommitRestoreAsync(staged);
+        }
+        catch
+        {
+            TryDelete(staged);
+            throw;
+        }
     }
 
     private static StringComparison PathComparison =>

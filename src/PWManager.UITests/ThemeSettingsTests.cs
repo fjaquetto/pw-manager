@@ -213,7 +213,7 @@ public class ThemeSettingsTests
     public void VaultPanel_AppearanceModal_OpensClosesAndKeepsFocusInside()
     {
         var viewModel = MemoryVault.Sample(3).CreateViewModel();
-        viewModel.LoadEntriesAsync().GetAwaiter().GetResult();
+        UiTestPump.WaitFor(viewModel.LoadEntriesAsync());
         var window = new Window
         {
             Content = new VaultPanel
@@ -254,7 +254,7 @@ public class ThemeSettingsTests
     public void VaultPanel_AppearanceModal_KeepsTheDeleteButtonClearOfTheScrollBar()
     {
         var viewModel = MemoryVault.Sample(3).CreateViewModel();
-        viewModel.LoadEntriesAsync().GetAwaiter().GetResult();
+        UiTestPump.WaitFor(viewModel.LoadEntriesAsync());
         var window = new Window
         {
             Content = new VaultPanel

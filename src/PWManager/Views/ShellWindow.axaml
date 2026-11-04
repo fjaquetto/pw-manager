@@ -33,5 +33,8 @@
         </DataTemplate>
       </ContentControl.ContentTemplate>
     </ContentControl>
+    <views:RestoreVaultView x:Name="RestoreVaultHost" ZIndex="20"
+                            DataContext="{Binding Unlock.Restore}"
+                            IsVisible="{Binding IsOpen}"/>
   </Panel>
 </Window>

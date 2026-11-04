@@ -11,7 +11,7 @@ A personal desktop password manager built with .NET 10 and Avalonia UI. Keep cre
 - Security settings: automatic lock after idle time (or when minimized), manual lock (button or Ctrl+L), clipboard clearing for copied passwords, and automatic hiding of revealed passwords.
 - Create-your-vault onboarding: a new vault asks for the master password twice and warns that there is no recovery.
 - Master password change: re-encrypts every entry with a fresh key in a single transaction.
-- Backup and restore from the Security dialog, using encrypted copies of the database (no plaintext export).
+- Backup, restore, and import-and-merge from encrypted database copies (no plaintext export). A new installation can restore directly from the unlock screen.
 - AES-256-GCM encryption with PBKDF2-SHA256 (600,000 iterations), authenticated per field and derived once per session; legacy vaults are migrated automatically on unlock.
 - Search across site and login, plus optional site/login filters.
 - Sort by site, login, creation date, or last update, in either direction.
@@ -242,7 +242,8 @@ Choose **Security** (shield icon) in the header:
 - **Clipboard** — copied passwords are cleared after the configured time (default 25 seconds, 0 disables) only if the clipboard still holds that password.
 - **Passwords** — revealed passwords are hidden again after the configured time (default 20 seconds, 0 disables).
 - **Master password** — change it by entering the current and new passwords; every entry is re-encrypted with a new key in a single transaction (a transient backup protects the operation).
-- **Backup** — save an encrypted copy of the vault (`VACUUM INTO`, one consistent file) or restore one. Restoring keeps a `.before-restore` safety copy of the current vault and locks the app so it is unlocked with the backup's master password.
+- **Backup** — save an encrypted copy of the vault (`VACUUM INTO`, one consistent file) or restore one. Restoring keeps a `.before-restore` safety copy of the current vault and locks the app so it is unlocked with the backup's master password. Backups from older schemas are migrated on a staged copy before the current vault is replaced.
+- **Import and merge** — combine entries from another PWManager vault by entry id. Newer entries update the current vault, entries already current are kept, and conflicts keep the version in the destination vault. Deletions are not propagated.
 
 Preferences live in `settings.json` next to the database and are never written to the vault.
 

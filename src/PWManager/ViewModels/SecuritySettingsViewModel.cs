@@ -22,19 +22,35 @@ public partial class SecuritySettingsViewModel : ViewModelBase
         IAppSettingsService settings,
         IVaultRekeyService rekey,
         IVaultMaintenanceService maintenance,
-        IFilePickerService filePicker)
+        IFilePickerService filePicker,
+        RestoreVaultViewModel? restore = null,
+        ImportVaultViewModel? import = null)
     {
         _settings = settings;
         _rekey = rekey;
         _maintenance = maintenance;
         _filePicker = filePicker;
+        Restore = restore ?? new RestoreVaultViewModel(maintenance, filePicker);
+        Restore.Restored += OnRestored;
+        Import = import;
+
+        if (Import is not null)
+        {
+            Import.Imported += OnImported;
+        }
     }
 
     public event Action? CloseRequested;
 
     // The shell locks the vault after a restore, so it can be unlocked again
     // with the backup's master password.
-    public event Action? VaultRestored;
+    public event Action<string?>? VaultRestored;
+
+    public event Action? VaultImported;
+
+    public RestoreVaultViewModel Restore { get; }
+
+    public ImportVaultViewModel? Import { get; }
 
     [ObservableProperty]
     private int _autoLockMinutes = AppSettings.DefaultAutoLockMinutes;
@@ -71,15 +87,11 @@ public partial class SecuritySettingsViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isBackingUp;
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasPendingRestore))]
-    private string _pendingRestorePath = string.Empty;
-
     public bool HasPasswordMessage => PasswordMessage.Length > 0;
 
     public bool HasBackupMessage => BackupMessage.Length > 0;
 
-    public bool HasPendingRestore => PendingRestorePath.Length > 0;
+    public bool HasImport => Import is not null;
 
     public void Open()
     {
@@ -96,7 +108,8 @@ public partial class SecuritySettingsViewModel : ViewModelBase
         ClearPasswordFields();
         PasswordMessage = string.Empty;
         BackupMessage = string.Empty;
-        PendingRestorePath = string.Empty;
+        Restore.Reset();
+        Import?.Reset();
     }
 
     partial void OnAutoLockMinutesChanged(int value) => Persist();
@@ -187,8 +200,14 @@ public partial class SecuritySettingsViewModel : ViewModelBase
         BackupMessage = string.Empty;
         var target = await _filePicker.PickSaveFileAsync("Back up vault", $"pwmanager-backup-{DateTime.Now:yyyyMMdd}.db");
 
-        if (target is null)
+        if (target.IsCanceled)
         {
+            return;
+        }
+
+        if (!target.IsSuccess)
+        {
+            BackupMessage = target.ErrorMessage ?? "Unable to choose the backup location.";
             return;
         }
 
@@ -196,8 +215,8 @@ public partial class SecuritySettingsViewModel : ViewModelBase
 
         try
         {
-            await _maintenance.BackupAsync(target);
-            BackupMessage = $"Backup saved to {target}";
+            await _maintenance.BackupAsync(target.Path!);
+            BackupMessage = $"Backup saved to {target.Path}";
         }
         catch (Exception)
         {
@@ -210,53 +229,15 @@ public partial class SecuritySettingsViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private async Task ChooseRestoreAsync()
-    {
-        if (IsBackingUp)
-        {
-            return;
-        }
-
-        BackupMessage = string.Empty;
-        var source = await _filePicker.PickOpenFileAsync("Restore vault from backup");
-
-        if (source is not null)
-        {
-            PendingRestorePath = source;
-        }
-    }
-
-    [RelayCommand]
-    private async Task ConfirmRestoreAsync()
-    {
-        if (IsBackingUp || !HasPendingRestore)
-        {
-            return;
-        }
-
-        IsBackingUp = true;
-
-        try
-        {
-            await _maintenance.RestoreAsync(PendingRestorePath);
-            PendingRestorePath = string.Empty;
-            VaultRestored?.Invoke();
-        }
-        catch (Exception)
-        {
-            BackupMessage = "Unable to restore this backup. The current vault was kept.";
-        }
-        finally
-        {
-            IsBackingUp = false;
-        }
-    }
-
-    [RelayCommand]
-    private void CancelRestore() => PendingRestorePath = string.Empty;
-
-    [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke();
+
+    private void OnRestored(string? safetyCopyPath)
+    {
+        BackupMessage = string.Empty;
+        VaultRestored?.Invoke(safetyCopyPath);
+    }
+
+    private void OnImported() => VaultImported?.Invoke();
 
     private void ClearPasswordFields()
     {

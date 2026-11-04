@@ -1,22 +1,34 @@
-
 using PWManager.Domain.Abstractions.Infrastructure;
 
 namespace PWManager.Application.UseCases.Maintenance;
 
 public sealed class VaultMaintenanceService(
     IVaultBackupService backupService,
+    IVaultSchemaMigrator schemaMigrator,
     IVaultSession session) : IVaultMaintenanceService
 {
     public Task BackupAsync(string targetPath) => backupService.BackupAsync(targetPath);
 
-    public async Task<string> RestoreAsync(string sourcePath)
+    public Task<string> RestoreAsync(string sourcePath) => Task.Run(() => RestoreCoreAsync(sourcePath));
+
+    private async Task<string> RestoreCoreAsync(string sourcePath)
     {
-        var safetyCopy = await backupService.RestoreAsync(sourcePath);
+        var stagedPath = await backupService.StageRestoreAsync(sourcePath);
 
-        // The restored vault belongs to a different master password, so the
-        // current key material must not survive the operation.
-        session.Lock();
+        try
+        {
+            await schemaMigrator.MigrateAsync(stagedPath);
 
-        return safetyCopy;
+            var safetyCopy = await backupService.CommitRestoreAsync(stagedPath);
+
+            session.Lock();
+
+            return safetyCopy;
+        }
+        catch
+        {
+            await backupService.DiscardStagedAsync(stagedPath);
+            throw;
+        }
     }
 }

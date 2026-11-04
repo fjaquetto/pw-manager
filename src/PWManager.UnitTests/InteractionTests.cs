@@ -160,6 +160,7 @@ public class InteractionTests
             }
         };
         time.Advance(TimeSpan.FromSeconds(2));
+        time.Advance(TimeSpan.FromMilliseconds(150));
 
         await hidden.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
@@ -169,6 +170,8 @@ public class InteractionTests
 
         Assert.True(viewModel.IsVisible);
         viewModel.DismissCommand.Execute(null);
+        Assert.Equal(0, viewModel.Opacity);
+        time.Advance(TimeSpan.FromMilliseconds(150));
 
         Assert.False(viewModel.IsVisible);
     }

@@ -4,6 +4,7 @@ using PWManager.Application.UseCases.Maintenance;
 using PWManager.Application.UseCases.Rekey;
 using PWManager.Domain.Settings;
 using PWManager.Infra.Configuration;
+using PWManager.Services;
 using PWManager.Services.Interfaces;
 using PWManager.ViewModels;
 
@@ -120,7 +121,8 @@ public class SecuritySettingsViewModelTests : IDisposable
     [Fact]
     public async Task Backup_UsesThePickedPathAndReportsIt()
     {
-        _picker.Setup(p => p.PickSaveFileAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync("/tmp/backup.db");
+        _picker.Setup(p => p.PickSaveFileAsync(It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync(FilePickerResult.Selected("/tmp/backup.db"));
         _backup.Setup(b => b.BackupAsync("/tmp/backup.db")).Returns(Task.CompletedTask);
         var viewModel = CreateViewModel();
         viewModel.Open();
@@ -134,7 +136,8 @@ public class SecuritySettingsViewModelTests : IDisposable
     [Fact]
     public async Task Backup_WhenThePickerIsCancelled_DoesNothing()
     {
-        _picker.Setup(p => p.PickSaveFileAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync((string?)null);
+        _picker.Setup(p => p.PickSaveFileAsync(It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync(FilePickerResult.Canceled());
         var viewModel = CreateViewModel();
         viewModel.Open();
 
@@ -147,52 +150,60 @@ public class SecuritySettingsViewModelTests : IDisposable
     [Fact]
     public async Task Restore_RequiresConfirmationAndRaisesVaultRestored()
     {
-        _picker.Setup(p => p.PickOpenFileAsync(It.IsAny<string>())).ReturnsAsync("/tmp/backup.db");
+        _picker.Setup(p => p.PickOpenFileAsync(It.IsAny<string>()))
+            .ReturnsAsync(FilePickerResult.Selected("/tmp/backup.db"));
         _backup.Setup(b => b.RestoreAsync("/tmp/backup.db")).ReturnsAsync("/tmp/safety.bak");
         var viewModel = CreateViewModel();
         var restored = false;
-        viewModel.VaultRestored += () => restored = true;
+        viewModel.VaultRestored += _ => restored = true;
         viewModel.Open();
 
-        await viewModel.ChooseRestoreCommand.ExecuteAsync(null);
+        await viewModel.Restore.ChooseCommand.ExecuteAsync(null);
 
-        Assert.True(viewModel.HasPendingRestore);
+        Assert.True(viewModel.Restore.IsOpen);
+        Assert.True(viewModel.Restore.HasSelection);
         _backup.Verify(b => b.RestoreAsync(It.IsAny<string>()), Times.Never);
 
-        await viewModel.ConfirmRestoreCommand.ExecuteAsync(null);
+        await viewModel.Restore.ConfirmCommand.ExecuteAsync(null);
 
         Assert.True(restored);
-        Assert.False(viewModel.HasPendingRestore);
+        Assert.False(viewModel.Restore.IsOpen);
+        Assert.Equal("/tmp/safety.bak", viewModel.Restore.SafetyCopyPath);
     }
 
     [Fact]
     public async Task Restore_WhenItFails_KeepsTheCurrentVaultAndReports()
     {
-        _picker.Setup(p => p.PickOpenFileAsync(It.IsAny<string>())).ReturnsAsync("/tmp/broken.db");
+        _picker.Setup(p => p.PickOpenFileAsync(It.IsAny<string>()))
+            .ReturnsAsync(FilePickerResult.Selected("/tmp/broken.db"));
         _backup.Setup(b => b.RestoreAsync("/tmp/broken.db")).ThrowsAsync(new InvalidDataException("not a backup"));
         var viewModel = CreateViewModel();
         var restored = false;
-        viewModel.VaultRestored += () => restored = true;
+        viewModel.VaultRestored += _ => restored = true;
         viewModel.Open();
 
-        await viewModel.ChooseRestoreCommand.ExecuteAsync(null);
-        await viewModel.ConfirmRestoreCommand.ExecuteAsync(null);
+        await viewModel.Restore.ChooseCommand.ExecuteAsync(null);
+        await viewModel.Restore.ConfirmCommand.ExecuteAsync(null);
 
         Assert.False(restored);
-        Assert.True(viewModel.HasBackupMessage);
-        Assert.Contains("current vault was kept", viewModel.BackupMessage);
+        Assert.True(viewModel.Restore.IsOpen);
+        Assert.True(viewModel.Restore.HasError);
+        Assert.Contains("current vault was kept", viewModel.Restore.ErrorMessage);
     }
 
     [Fact]
-    public void CancelRestore_ClearsThePendingPath()
+    public async Task CancelRestore_ClearsThePendingPath()
     {
+        _picker.Setup(p => p.PickOpenFileAsync(It.IsAny<string>()))
+            .ReturnsAsync(FilePickerResult.Selected("/tmp/backup.db"));
         var viewModel = CreateViewModel();
         viewModel.Open();
-        viewModel.PendingRestorePath = "/tmp/backup.db";
 
-        viewModel.CancelRestoreCommand.Execute(null);
+        await viewModel.Restore.ChooseCommand.ExecuteAsync(null);
+        viewModel.Restore.CancelCommand.Execute(null);
 
-        Assert.False(viewModel.HasPendingRestore);
+        Assert.False(viewModel.Restore.IsOpen);
+        Assert.False(viewModel.Restore.HasSelection);
     }
 
     [Fact]

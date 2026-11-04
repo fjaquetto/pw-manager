@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using PWManager.Application.UseCases.Bootstrapping;
+using PWManager.Application.UseCases.Import;
 using PWManager.Application.UseCases.Maintenance;
 using PWManager.Application.UseCases.Migration;
 using PWManager.Application.UseCases.Rekey;
@@ -15,6 +16,7 @@ using PWManager.Domain.Abstractions.Infrastructure;
 using PWManager.Domain.Abstractions.Repositories;
 using PWManager.Infra.Configuration;
 using PWManager.Infra.Persistence;
+using PWManager.Infra.Persistence.Archives;
 using PWManager.Infra.Persistence.Backup;
 using PWManager.Infra.Persistence.Repositories;
 using PWManager.Infra.Persistence.Schema;
@@ -54,6 +56,9 @@ internal static class ServiceRegistration
         services.AddSingleton<IVaultBackupService>(provider =>
             new VaultBackupService(provider.GetRequiredService<DatabaseConfigurator>().GetDatabaseFilePath()));
         services.AddSingleton<IVaultMaintenanceService, VaultMaintenanceService>();
+        services.AddSingleton<IVaultArchiveReader, VaultArchiveReader>();
+        services.AddSingleton<IVaultMergeRepository, VaultMergeRepository>();
+        services.AddTransient<IVaultImportService, VaultImportService>();
         services.AddSingleton<IUserRepository, UserRepository>();
         services.AddSingleton<IVaultMetadataRepository, VaultMetadataRepository>();
         services.AddSingleton<IVaultMigrationRepository, VaultMigrationRepository>();
@@ -67,6 +72,8 @@ internal static class ServiceRegistration
         services.AddTransient<IVaultEntryService, VaultEntryService>();
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<IFilePickerService>(_ => new FilePickerService(mainWindow));
+        services.AddTransient<RestoreVaultViewModel>();
+        services.AddTransient<ImportVaultViewModel>();
         services.AddTransient<ThemeSettingsViewModel>();
         services.AddTransient<SecuritySettingsViewModel>();
         services.AddTransient<UnlockViewModel>();

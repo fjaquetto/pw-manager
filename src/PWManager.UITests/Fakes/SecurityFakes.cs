@@ -1,7 +1,9 @@
+using PWManager.Application.UseCases.Import;
 using PWManager.Application.UseCases.Maintenance;
 using PWManager.Application.UseCases.Rekey;
 using PWManager.Application.UseCases.Settings;
 using PWManager.Domain.Settings;
+using PWManager.Services;
 using PWManager.Services.Interfaces;
 
 namespace PWManager.UITests.Fakes;
@@ -34,13 +36,22 @@ internal sealed class BackupStub : IVaultMaintenanceService
     public Task<string> RestoreAsync(string sourcePath) => Task.FromResult(sourcePath + ".safety");
 }
 
+internal sealed class ImportStub : IVaultImportService
+{
+    public VaultImportResult Result { get; set; } = new(VaultImportStatus.Success, Added: 1);
+
+    public Task<VaultImportResult> ImportAsync(string sourcePath, string sourcePassword) => Task.FromResult(Result);
+}
+
 internal sealed class FilePickerStub : IFilePickerService
 {
     public string? SavePath { get; set; }
 
     public string? OpenPath { get; set; }
 
-    public Task<string?> PickSaveFileAsync(string title, string suggestedFileName) => Task.FromResult(SavePath);
+    public Task<FilePickerResult> PickSaveFileAsync(string title, string suggestedFileName) =>
+        Task.FromResult(SavePath is null ? FilePickerResult.Canceled() : FilePickerResult.Selected(SavePath));
 
-    public Task<string?> PickOpenFileAsync(string title) => Task.FromResult(OpenPath);
+    public Task<FilePickerResult> PickOpenFileAsync(string title) =>
+        Task.FromResult(OpenPath is null ? FilePickerResult.Canceled() : FilePickerResult.Selected(OpenPath));
 }
