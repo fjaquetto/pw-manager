@@ -768,7 +768,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
 
         _clipboardClear = new CancellationTokenSource();
-        _ = ClearClipboardLaterAsync(TimeSpan.FromSeconds(seconds), _clipboardClear.Token);
+        AsyncOperation.Forget(() => ClearClipboardLaterAsync(TimeSpan.FromSeconds(seconds), _clipboardClear.Token));
     }
 
     private async Task ClearClipboardLaterAsync(TimeSpan delay, CancellationToken cancellationToken)
@@ -827,7 +827,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
 
         _hidePasswords = new CancellationTokenSource();
-        _ = HidePasswordsLaterAsync(TimeSpan.FromSeconds(seconds), _hidePasswords.Token);
+        AsyncOperation.Forget(() => HidePasswordsLaterAsync(TimeSpan.FromSeconds(seconds), _hidePasswords.Token));
     }
 
     private async Task HidePasswordsLaterAsync(TimeSpan delay, CancellationToken cancellationToken)
@@ -942,7 +942,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         LockRequested?.Invoke(RestoreVaultViewModel.NoticeFor(safetyCopyPath));
     }
 
-    private void OnVaultImported() => _ = LoadEntriesAsync();
+    private void OnVaultImported() => AsyncOperation.Forget(LoadEntriesAsync);
 
     [RelayCommand]
     private void RequestLock() => LockRequested?.Invoke(null);
@@ -1039,7 +1039,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         Notification.Dispose();
         HideSensitiveData();
         CancelClipboardClear();
-        _ = ClearSensitiveClipboardAsync(notify: false);
+        AsyncOperation.Forget(() => ClearSensitiveClipboardAsync(notify: false));
         Editor.Open();
         Generator.GeneratedPassword = string.Empty;
         _allEntries.Clear();

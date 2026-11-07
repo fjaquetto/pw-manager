@@ -54,7 +54,9 @@ internal static class ServiceRegistration
             new AppSettingsStore(provider.GetRequiredService<DatabaseConfigurator>().GetApplicationFolder()));
         services.AddSingleton<IAppSettingsService, AppSettingsService>();
         services.AddSingleton<IVaultBackupService>(provider =>
-            new VaultBackupService(provider.GetRequiredService<DatabaseConfigurator>().GetDatabaseFilePath()));
+            new VaultBackupService(
+                provider.GetRequiredService<DatabaseConfigurator>().GetDatabaseFilePath(),
+                provider.GetRequiredService<TimeProvider>()));
         services.AddSingleton<IVaultMaintenanceService, VaultMaintenanceService>();
         services.AddSingleton<IVaultArchiveReader, VaultArchiveReader>();
         services.AddSingleton<IVaultMergeRepository, VaultMergeRepository>();

@@ -31,8 +31,9 @@ public class ShellTests
         bool configured = true,
         RestoreVaultViewModel? restore = null)
     {
+        var restoreViewModel = restore ?? new RestoreVaultViewModel(new BackupStub(), new FilePickerStub());
         var shell = new ShellViewModel(
-            new UnlockViewModel(service, new AppInfo("2.3.1", "3481920"), restore),
+            new UnlockViewModel(service, new AppInfo("2.3.1", "3481920"), restoreViewModel),
             () =>
             {
                 Created++;

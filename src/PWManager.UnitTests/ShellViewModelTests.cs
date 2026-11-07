@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Time.Testing;
 using Moq;
+using PWManager.Application.UseCases.Maintenance;
 using PWManager.Application.UseCases.Settings;
 using PWManager.Application.UseCases.Unlock;
 using PWManager.Domain.Abstractions.Infrastructure;
@@ -7,6 +8,7 @@ using PWManager.Domain.Vault;
 using PWManager.Infra.Configuration;
 using PWManager.Infra.Security;
 using PWManager.Services;
+using PWManager.Services.Interfaces;
 using PWManager.ViewModels;
 
 namespace PWManager.UnitTests;
@@ -271,7 +273,10 @@ public class ShellViewModelTests
             unlockService = mock.Object;
         }
 
-        var unlock = new UnlockViewModel(unlockService, TestAppInfo.Create())
+        var restore = new RestoreVaultViewModel(
+            Mock.Of<IVaultMaintenanceService>(),
+            Mock.Of<IFilePickerService>());
+        var unlock = new UnlockViewModel(unlockService, TestAppInfo.Create(), restore)
         {
             Password = "master"
         };

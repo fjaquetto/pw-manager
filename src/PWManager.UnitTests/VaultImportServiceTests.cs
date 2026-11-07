@@ -133,7 +133,8 @@ public class VaultImportServiceTests
             new LegacyVaultCipherService(),
             destinationEntries,
             new UserEncryptorService(destinationSession, new VaultCipherService()),
-            new VaultMergeRepository(destination.ContextFactory));
+            new VaultMergeRepository(destination.ContextFactory),
+            TimeProvider.System);
 
     private static IVaultEntryService CreateEntryService(TestDatabase database, VaultSession session) =>
         new VaultEntryService(

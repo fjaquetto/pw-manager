@@ -15,19 +15,15 @@ public partial class UnlockViewModel : ViewModelBase
     private readonly IUnlockService _unlockService;
     private readonly AppInfo _appInfo;
 
-    public UnlockViewModel(IUnlockService unlockService, AppInfo appInfo, RestoreVaultViewModel? restore = null)
+    public UnlockViewModel(IUnlockService unlockService, AppInfo appInfo, RestoreVaultViewModel restore)
     {
         _unlockService = unlockService;
         _appInfo = appInfo;
         Restore = restore;
-
-        if (Restore is not null)
-        {
-            Restore.Restored += OnRestored;
-        }
+        Restore.Restored += OnRestored;
     }
 
-    public RestoreVaultViewModel? Restore { get; }
+    public RestoreVaultViewModel Restore { get; }
 
     public string VersionText => $"v{_appInfo.Version}";
 
@@ -100,7 +96,7 @@ public partial class UnlockViewModel : ViewModelBase
 
     public bool ShowProgress => IsBusy || IsOpeningVault || IsPreparing;
 
-    public bool ShowRestore => IsCreating && Restore is not null && !IsBusy && !IsPreparing;
+    public bool ShowRestore => IsCreating && !IsBusy && !IsPreparing;
 
     public string ProgressText => IsPreparing ? "Preparing your vault…" : "Unlocking your vault…";
 

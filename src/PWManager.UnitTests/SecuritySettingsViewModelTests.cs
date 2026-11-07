@@ -1,4 +1,5 @@
 using Moq;
+using PWManager.Application.UseCases.Import;
 using PWManager.Application.UseCases.Settings;
 using PWManager.Application.UseCases.Maintenance;
 using PWManager.Application.UseCases.Rekey;
@@ -16,6 +17,7 @@ public class SecuritySettingsViewModelTests : IDisposable
 
     private readonly Mock<IVaultRekeyService> _rekey = new();
     private readonly Mock<IVaultMaintenanceService> _backup = new();
+    private readonly Mock<IVaultImportService> _import = new();
     private readonly Mock<IFilePickerService> _picker = new();
     private readonly AppSettingsService _settings;
 
@@ -32,7 +34,14 @@ public class SecuritySettingsViewModelTests : IDisposable
         }
     }
 
-    private SecuritySettingsViewModel CreateViewModel() => new(_settings, _rekey.Object, _backup.Object, _picker.Object);
+    private SecuritySettingsViewModel CreateViewModel() =>
+        new(
+            _settings,
+            _rekey.Object,
+            _backup.Object,
+            _picker.Object,
+            new RestoreVaultViewModel(_backup.Object, _picker.Object),
+            new ImportVaultViewModel(_import.Object, _picker.Object));
 
     [Fact]
     public void Open_LoadsTheCurrentSettings()

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Moq;
+using PWManager.Application.UseCases.Import;
 using PWManager.Application.UseCases.Migration;
 using PWManager.Application.UseCases.Settings;
 using PWManager.Application.UseCases.Unlock;
@@ -228,11 +229,19 @@ public class PersistenceTests
         var themeSettings = new ThemeSettingsViewModel(
             Mock.Of<IThemeService>(),
             new ColorThemeStore(Path.Combine(database.DirectoryPath, "themes")));
+        var restore = new RestoreVaultViewModel(
+            Mock.Of<IVaultMaintenanceService>(),
+            Mock.Of<IFilePickerService>());
+        var import = new ImportVaultViewModel(
+            Mock.Of<IVaultImportService>(),
+            Mock.Of<IFilePickerService>());
         var securitySettings = new SecuritySettingsViewModel(
             settings,
             Mock.Of<IVaultRekeyService>(),
             Mock.Of<IVaultMaintenanceService>(),
-            Mock.Of<IFilePickerService>());
+            Mock.Of<IFilePickerService>(),
+            restore,
+            import);
 
         return new MainViewModel(
             new VaultEntryService(

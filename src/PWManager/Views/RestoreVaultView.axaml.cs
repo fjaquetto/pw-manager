@@ -1,13 +1,12 @@
-using System.ComponentModel;
+using System;
 using Avalonia.Controls;
-using Avalonia.Threading;
 using PWManager.ViewModels;
 
 namespace PWManager.Views;
 
 public partial class RestoreVaultView : UserControl
 {
-    private RestoreVaultViewModel? _viewModel;
+    private DialogFocusBinder? _focusBinder;
 
     public RestoreVaultView()
     {
@@ -15,33 +14,18 @@ public partial class RestoreVaultView : UserControl
         DataContextChanged += OnDataContextChanged;
     }
 
-    private void OnDataContextChanged(object? sender, System.EventArgs e)
+    private void OnDataContextChanged(object? sender, EventArgs e)
     {
-        if (_viewModel is not null)
-        {
-            _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
-        }
+        _focusBinder?.Dispose();
 
-        _viewModel = DataContext as RestoreVaultViewModel;
-
-        if (_viewModel is not null)
-        {
-            _viewModel.PropertyChanged += OnViewModelPropertyChanged;
-        }
-    }
-
-    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs args)
-    {
-        if (_viewModel?.IsOpen == true
-            && args.PropertyName is nameof(RestoreVaultViewModel.IsOpen) or nameof(RestoreVaultViewModel.HasSelection))
-        {
-            Dispatcher.UIThread.Post(FocusPrimaryAction);
-        }
-    }
-
-    private void FocusPrimaryAction()
-    {
-        var target = _viewModel?.HasSelection == true ? "ConfirmRestoreButton" : "ChooseRestoreButton";
-        ControlFocus.Request(this, target);
+        _focusBinder = DataContext is RestoreVaultViewModel viewModel
+            ? new DialogFocusBinder(
+                this,
+                viewModel,
+                () => viewModel.IsOpen,
+                () => viewModel.HasSelection ? "ConfirmRestoreButton" : "ChooseRestoreButton",
+                nameof(RestoreVaultViewModel.IsOpen),
+                nameof(RestoreVaultViewModel.HasSelection))
+            : null;
     }
 }

@@ -38,12 +38,12 @@ public partial class NotificationViewModel(TimeProvider timeProvider) : ViewMode
         Opacity = 0;
 
         _animation = new();
-        _ = FadeInAsync(_animation.Token);
+        AsyncOperation.Forget(() => FadeInAsync(_animation.Token));
 
         if (!isError && !persistent)
         {
             _dismissal = new();
-            _ = DismissLaterAsync(_dismissal.Token);
+            AsyncOperation.Forget(() => DismissLaterAsync(_dismissal.Token));
         }
     }
 
@@ -93,7 +93,7 @@ public partial class NotificationViewModel(TimeProvider timeProvider) : ViewMode
         }
 
         _animation = new();
-        _ = HideAsync(_animation.Token);
+        AsyncOperation.Forget(() => HideAsync(_animation.Token));
     }
 
     private async Task HideAsync(CancellationToken cancellationToken)

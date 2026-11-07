@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Data.Sqlite;
 using PWManager.Domain.Abstractions.Infrastructure;
 
@@ -5,9 +6,10 @@ namespace PWManager.Infra.Persistence.Backup;
 
 // VACUUM INTO produces a consistent snapshot without the WAL side files, and
 // no plaintext ever leaves the vault.
-public sealed class VaultBackupService(string databasePath) : IVaultBackupService
+public sealed class VaultBackupService(string databasePath, TimeProvider timeProvider) : IVaultBackupService
 {
     private const long MaxBackupBytes = 1024L * 1024 * 1024;
+    private static readonly string[] RequiredUserColumns = ["Site", "Login", "Password", "CreationDate"];
 
     public string DatabasePath => databasePath;
 
@@ -58,9 +60,7 @@ public sealed class VaultBackupService(string databasePath) : IVaultBackupServic
 
         try
         {
-            var file = new FileInfo(sourcePath);
-
-            if (file.Length == 0 || file.Length > MaxBackupBytes)
+            if (!HasSupportedSize(sourcePath))
             {
                 return false;
             }
@@ -68,27 +68,8 @@ public sealed class VaultBackupService(string databasePath) : IVaultBackupServic
             await using var connection = new SqliteConnection(BuildConnectionString(sourcePath, readOnly: true));
             await connection.OpenAsync();
 
-            await using var integrity = connection.CreateCommand();
-            integrity.CommandText = "PRAGMA quick_check;";
-
-            if (!string.Equals(Convert.ToString(await integrity.ExecuteScalarAsync()), "ok", StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-
-            await using var command = connection.CreateCommand();
-            command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'User';";
-
-            if (Convert.ToInt64(await command.ExecuteScalarAsync()) == 0)
-            {
-                return false;
-            }
-
-            await using var columns = connection.CreateCommand();
-            columns.CommandText =
-                "SELECT COUNT(*) FROM pragma_table_info('User') WHERE name IN ('Site', 'Login', 'Password', 'CreationDate');";
-
-            return Convert.ToInt64(await columns.ExecuteScalarAsync()) == 4;
+            return await PassesIntegrityCheckAsync(connection)
+                && await HasRequiredUserSchemaAsync(connection);
         }
         catch (SqliteException)
         {
@@ -156,7 +137,7 @@ public sealed class VaultBackupService(string databasePath) : IVaultBackupServic
             throw new InvalidDataException("The prepared backup is no longer available.");
         }
 
-        var safetyCopy = $"{databasePath}.before-restore-{DateTime.Now:yyyyMMddHHmmss}.bak";
+        var safetyCopy = CreateSafetyCopyPath("before-restore");
         await BackupAsync(safetyCopy);
 
         SqliteConnection.ClearAllPools();
@@ -190,6 +171,57 @@ public sealed class VaultBackupService(string databasePath) : IVaultBackupServic
             throw;
         }
     }
+
+    private static bool HasSupportedSize(string sourcePath)
+    {
+        var file = new FileInfo(sourcePath);
+
+        return file.Length is > 0 and <= MaxBackupBytes;
+    }
+
+    private static async Task<bool> PassesIntegrityCheckAsync(SqliteConnection connection)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA quick_check;";
+
+        return string.Equals(
+            Convert.ToString(await command.ExecuteScalarAsync()),
+            "ok",
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static async Task<bool> HasRequiredUserSchemaAsync(SqliteConnection connection)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'User';";
+
+        if (Convert.ToInt64(await command.ExecuteScalarAsync()) == 0)
+        {
+            return false;
+        }
+
+        var columns = await ReadColumnsAsync(connection);
+        return RequiredUserColumns.All(column => columns.Contains(column));
+    }
+
+    private static async Task<HashSet<string>> ReadColumnsAsync(SqliteConnection connection)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA table_info('User');";
+
+        await using var reader = await command.ExecuteReaderAsync();
+        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        while (await reader.ReadAsync())
+        {
+            columns.Add(reader.GetString(1));
+        }
+
+        return columns;
+    }
+
+    private string CreateSafetyCopyPath(string prefix) =>
+        $"{databasePath}.{prefix}-{timeProvider.GetLocalNow().ToString("yyyyMMddHHmmssfff", CultureInfo.InvariantCulture)}.bak";
 
     private static StringComparison PathComparison =>
         OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;

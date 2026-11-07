@@ -23,21 +23,17 @@ public partial class SecuritySettingsViewModel : ViewModelBase
         IVaultRekeyService rekey,
         IVaultMaintenanceService maintenance,
         IFilePickerService filePicker,
-        RestoreVaultViewModel? restore = null,
-        ImportVaultViewModel? import = null)
+        RestoreVaultViewModel restore,
+        ImportVaultViewModel import)
     {
         _settings = settings;
         _rekey = rekey;
         _maintenance = maintenance;
         _filePicker = filePicker;
-        Restore = restore ?? new RestoreVaultViewModel(maintenance, filePicker);
+        Restore = restore;
         Restore.Restored += OnRestored;
         Import = import;
-
-        if (Import is not null)
-        {
-            Import.Imported += OnImported;
-        }
+        Import.Imported += OnImported;
     }
 
     public event Action? CloseRequested;
@@ -50,7 +46,7 @@ public partial class SecuritySettingsViewModel : ViewModelBase
 
     public RestoreVaultViewModel Restore { get; }
 
-    public ImportVaultViewModel? Import { get; }
+    public ImportVaultViewModel Import { get; }
 
     [ObservableProperty]
     private int _autoLockMinutes = AppSettings.DefaultAutoLockMinutes;
@@ -91,8 +87,6 @@ public partial class SecuritySettingsViewModel : ViewModelBase
 
     public bool HasBackupMessage => BackupMessage.Length > 0;
 
-    public bool HasImport => Import is not null;
-
     public void Open()
     {
         _suppressPersist = true;
@@ -109,7 +103,7 @@ public partial class SecuritySettingsViewModel : ViewModelBase
         PasswordMessage = string.Empty;
         BackupMessage = string.Empty;
         Restore.Reset();
-        Import?.Reset();
+        Import.Reset();
     }
 
     partial void OnAutoLockMinutesChanged(int value) => Persist();
@@ -205,7 +199,7 @@ public partial class SecuritySettingsViewModel : ViewModelBase
             return;
         }
 
-        if (!target.IsSuccess)
+        if (!target.TryGetLocalFile(out var backupPath))
         {
             BackupMessage = target.ErrorMessage ?? "Unable to choose the backup location.";
             return;
@@ -215,8 +209,8 @@ public partial class SecuritySettingsViewModel : ViewModelBase
 
         try
         {
-            await _maintenance.BackupAsync(target.Path!);
-            BackupMessage = $"Backup saved to {target.Path}";
+            await _maintenance.BackupAsync(backupPath);
+            BackupMessage = $"Backup saved to {backupPath}";
         }
         catch (Exception)
         {

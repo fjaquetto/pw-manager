@@ -67,7 +67,7 @@
           <StackPanel Orientation="Horizontal" Spacing="12">
             <Button Content="Back up vault…" Command="{Binding BackupVaultCommand}"/>
             <Button Content="Restore from backup…" Command="{Binding Restore.ChooseCommand}"/>
-            <Button Content="Import and merge…" Command="{Binding Import.ChooseCommand}" IsVisible="{Binding HasImport}"/>
+            <Button Content="Import and merge…" Command="{Binding Import.ChooseCommand}"/>
           </StackPanel>
           <TextBlock Text="{Binding BackupMessage}" Classes="caption" IsVisible="{Binding HasBackupMessage}" TextWrapping="Wrap"
                      AutomationProperties.LiveSetting="Polite"/>

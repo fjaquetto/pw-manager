@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PWManager.Application.UseCases.Maintenance;
+using PWManager.Services;
 using PWManager.Services.Interfaces;
 
 namespace PWManager.ViewModels;
@@ -63,24 +64,24 @@ public partial class RestoreVaultViewModel(
         }
 
         ErrorMessage = string.Empty;
-        var result = await filePicker.PickOpenFileAsync("Restore vault from backup");
+        var selection = await BackupFileSelector.SelectAsync(filePicker, "Restore vault from backup");
 
-        if (result.IsCanceled)
+        if (selection.IsCanceled)
         {
             return;
         }
 
-        if (!result.IsSuccess)
+        if (!selection.IsSelected)
         {
             SourcePath = string.Empty;
             FileName = string.Empty;
-            ErrorMessage = result.ErrorMessage ?? "Unable to open the selected file.";
+            ErrorMessage = selection.ErrorMessage;
             IsOpen = true;
             return;
         }
 
-        SourcePath = result.Path!;
-        FileName = Path.GetFileName(SourcePath);
+        SourcePath = selection.Path;
+        FileName = selection.FileName;
         IsOpen = true;
     }
 

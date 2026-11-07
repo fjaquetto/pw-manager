@@ -63,7 +63,7 @@ public class VaultMaintenanceServiceTests
         }
 
         var backup = Path.Combine(database.DirectoryPath, "legacy-backup.db");
-        await new VaultBackupService(legacyPath).BackupAsync(backup);
+        await new VaultBackupService(legacyPath, TimeProvider.System).BackupAsync(backup);
         var session = new VaultSession();
         session.Unlock(new byte[32]);
         var maintenance = new VaultMaintenanceService(

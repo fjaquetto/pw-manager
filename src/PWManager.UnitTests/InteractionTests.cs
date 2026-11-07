@@ -1,7 +1,9 @@
 using Microsoft.Extensions.Time.Testing;
 using Moq;
+using PWManager.Application.UseCases.Maintenance;
 using PWManager.Application.UseCases.Unlock;
 using PWManager.Domain.Vault;
+using PWManager.Services.Interfaces;
 using PWManager.ViewModels;
 
 namespace PWManager.UnitTests;
@@ -184,7 +186,7 @@ public class InteractionTests
     {
         var service = new Mock<IUnlockService>();
         service.Setup(s => s.UnlockAsync("master")).ReturnsAsync(result);
-        var viewModel = new UnlockViewModel(service.Object, TestAppInfo.Create())
+        var viewModel = new UnlockViewModel(service.Object, TestAppInfo.Create(), CreateRestore())
         {
             Password = "master",
             IsPasswordVisible = true
@@ -202,11 +204,14 @@ public class InteractionTests
         Assert.Equal(navigates ? 1 : 0, unlocked);
     }
 
+    private static RestoreVaultViewModel CreateRestore() =>
+        new(Mock.Of<IVaultMaintenanceService>(), Mock.Of<IFilePickerService>());
+
     [Fact]
     public async Task Unlock_EmptyInputDoesNotCallService()
     {
         var service = new Mock<IUnlockService>();
-        var viewModel = new UnlockViewModel(service.Object, TestAppInfo.Create());
+        var viewModel = new UnlockViewModel(service.Object, TestAppInfo.Create(), CreateRestore());
         viewModel.Configure(VaultStatus.Existing);
 
         await viewModel.UnlockCommand.ExecuteAsync(null);
@@ -221,7 +226,7 @@ public class InteractionTests
         var source = new TaskCompletionSource<UnlockResult>();
         var service = new Mock<IUnlockService>();
         service.Setup(s => s.UnlockAsync(It.IsAny<string>())).Returns(source.Task);
-        var viewModel = new UnlockViewModel(service.Object, TestAppInfo.Create())
+        var viewModel = new UnlockViewModel(service.Object, TestAppInfo.Create(), CreateRestore())
         {
             Password = "master"
         };

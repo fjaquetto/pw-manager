@@ -10,6 +10,10 @@ public class VaultMetadata
 
     public const int DefaultIterations = 600_000;
 
+    public const int MinimumSupportedIterations = 100_000;
+
+    public const int MaximumSupportedIterations = 5_000_000;
+
     public int Id { get; set; } = 1;
 
     public int FormatVersion { get; set; } = CurrentFormatVersion;
