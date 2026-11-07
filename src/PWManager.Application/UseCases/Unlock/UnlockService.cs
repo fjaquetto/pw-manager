@@ -24,7 +24,9 @@ public sealed class UnlockService(
         return await userRepository.AnyAsync() ? VaultStatus.Existing : VaultStatus.New;
     }
 
-    public async Task<UnlockResult> UnlockAsync(string password)
+    public Task<UnlockResult> UnlockAsync(string password) => Task.Run(() => UnlockCoreAsync(password));
+
+    private async Task<UnlockResult> UnlockCoreAsync(string password)
     {
         try
         {

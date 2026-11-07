@@ -1,0 +1,36 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PWManager.ViewModels"
+             x:Class="PWManager.Views.RestoreVaultView" x:DataType="vm:RestoreVaultViewModel">
+  <UserControl.KeyBindings>
+    <KeyBinding Gesture="Escape" Command="{Binding CancelCommand}"/>
+  </UserControl.KeyBindings>
+  <Border Background="{StaticResource ModalOverlayBrush}" Padding="24" KeyboardNavigation.TabNavigation="Cycle">
+    <Border Classes="dialog" Width="520" MaxHeight="560" HorizontalAlignment="Center" VerticalAlignment="Center">
+      <StackPanel Spacing="16">
+        <TextBlock Text="Restore vault from backup?" Classes="heading"/>
+        <TextBlock Text="Choose a PWManager backup (.db or .bak). Restoring replaces the current vault; a safety copy is kept."
+                   Classes="secondary" TextWrapping="Wrap"/>
+
+        <StackPanel Spacing="6" IsVisible="{Binding HasSelection}">
+          <TextBlock Text="Selected file" FontWeight="Medium"/>
+          <TextBlock Text="{Binding FileName}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+          <TextBlock Text="{Binding SourcePath}" Classes="caption" TextWrapping="Wrap"/>
+        </StackPanel>
+
+        <TextBlock Text="{Binding ErrorMessage}" Classes="error" IsVisible="{Binding HasError}" TextWrapping="Wrap"
+                   AutomationProperties.LiveSetting="Polite"/>
+        <ProgressBar IsIndeterminate="True" Height="4" IsVisible="{Binding IsBusy}"
+                     AutomationProperties.Name="Restoring vault"/>
+
+        <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right" Margin="0,8,0,0">
+          <Button Content="Cancel" Classes="ghost" Command="{Binding CancelCommand}" IsEnabled="{Binding !IsBusy}"/>
+          <Button x:Name="ChooseRestoreButton" Content="Choose backup…" Command="{Binding ChooseCommand}"
+                  IsVisible="{Binding ShowChooseButton}"/>
+          <Button x:Name="ConfirmRestoreButton" Content="{Binding ConfirmLabel}" Classes="danger"
+                  Command="{Binding ConfirmCommand}" IsVisible="{Binding ShowConfirmButton}"
+                  IsEnabled="{Binding CanConfirm}"/>
+        </StackPanel>
+      </StackPanel>
+    </Border>
+  </Border>
+</UserControl>

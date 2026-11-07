@@ -1,5 +1,5 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:vm="using:PWManager.ViewModels"
+             xmlns:vm="using:PWManager.ViewModels" xmlns:views="using:PWManager.Views"
              xmlns:material="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
              x:Class="PWManager.Views.SecuritySettingsView" x:DataType="vm:SecuritySettingsViewModel">
   <Grid RowDefinitions="Auto,*,Auto" RowSpacing="20">
@@ -66,16 +66,8 @@
           <TextBlock Text="Backups are encrypted copies of the vault. Restoring one requires its master password." Classes="caption" TextWrapping="Wrap"/>
           <StackPanel Orientation="Horizontal" Spacing="12">
             <Button Content="Back up vault…" Command="{Binding BackupVaultCommand}"/>
-            <Button Content="Restore from backup…" Command="{Binding ChooseRestoreCommand}"/>
-          </StackPanel>
-          <StackPanel Spacing="8" IsVisible="{Binding HasPendingRestore}">
-            <TextBlock Text="{Binding PendingRestorePath}" Classes="caption" TextWrapping="Wrap"/>
-            <TextBlock Text="Restoring replaces the current vault (a safety copy is kept) and locks the app; unlock with the backup's master password."
-                       Classes="caption" TextWrapping="Wrap"/>
-            <StackPanel Orientation="Horizontal" Spacing="12">
-              <Button Content="Replace vault" Classes="danger" Command="{Binding ConfirmRestoreCommand}"/>
-              <Button Content="Cancel restore" Classes="ghost" Command="{Binding CancelRestoreCommand}"/>
-            </StackPanel>
+            <Button Content="Restore from backup…" Command="{Binding Restore.ChooseCommand}"/>
+            <Button Content="Import and merge…" Command="{Binding Import.ChooseCommand}"/>
           </StackPanel>
           <TextBlock Text="{Binding BackupMessage}" Classes="caption" IsVisible="{Binding HasBackupMessage}" TextWrapping="Wrap"
                      AutomationProperties.LiveSetting="Polite"/>
@@ -86,5 +78,10 @@
     <Grid Grid.Row="2" ColumnDefinitions="*,Auto">
       <Button Grid.Column="1" Content="Close" Classes="primary" Command="{Binding CancelCommand}"/>
     </Grid>
+
+    <views:RestoreVaultView Grid.RowSpan="3" ZIndex="20" DataContext="{Binding Restore}"
+                            IsVisible="{Binding IsOpen}"/>
+    <views:ImportVaultView Grid.RowSpan="3" ZIndex="21" DataContext="{Binding Import}"
+                           IsVisible="{Binding IsOpen}"/>
   </Grid>
 </UserControl>

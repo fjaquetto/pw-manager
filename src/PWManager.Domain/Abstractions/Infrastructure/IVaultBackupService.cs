@@ -8,5 +8,11 @@ public interface IVaultBackupService
 
     Task<bool> IsValidBackupAsync(string sourcePath);
 
+    Task<string> StageRestoreAsync(string sourcePath);
+
+    Task<string> CommitRestoreAsync(string stagedPath);
+
+    Task DiscardStagedAsync(string stagedPath);
+
     Task<string> RestoreAsync(string sourcePath);
 }

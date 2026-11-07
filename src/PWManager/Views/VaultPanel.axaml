@@ -8,7 +8,7 @@
     <KeyBinding Gesture="Ctrl+L" Command="{Binding RequestLockCommand}"/>
     <KeyBinding Gesture="Escape" Command="{Binding EscapeCommand}"/>
   </UserControl.KeyBindings>
-  <Grid RowDefinitions="*,Auto">
+  <Panel>
     <Grid RowDefinitions="Auto,*,Auto" IsEnabled="{Binding !HasModal}">
       <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="24,20" Background="{StaticResource SurfaceBrush}">
         <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="16" IsEnabled="{Binding CanInteract}">
@@ -75,25 +75,25 @@
       </Border>
     </Grid>
 
-    <Border x:Name="GeneratorLayer" Background="{StaticResource ModalOverlayBrush}" IsVisible="{Binding IsGeneratorOpen}" Padding="24"
+    <Border x:Name="GeneratorLayer" ZIndex="10" Background="{StaticResource ModalOverlayBrush}" IsVisible="{Binding IsGeneratorOpen}" Padding="24"
             KeyboardNavigation.TabNavigation="Cycle">
       <Border Classes="dialog" Width="540" MaxHeight="650" HorizontalAlignment="Center" VerticalAlignment="Center">
         <views:PasswordGeneratorView/>
       </Border>
     </Border>
-    <Border x:Name="ThemeLayer" Background="{StaticResource ModalOverlayBrush}" IsVisible="{Binding IsThemeSettingsOpen}" Padding="24"
+    <Border x:Name="ThemeLayer" ZIndex="10" Background="{StaticResource ModalOverlayBrush}" IsVisible="{Binding IsThemeSettingsOpen}" Padding="24"
             KeyboardNavigation.TabNavigation="Cycle">
       <Border Classes="dialog" Width="640" MaxHeight="680" HorizontalAlignment="Center" VerticalAlignment="Center">
         <views:ThemeSettingsView DataContext="{Binding ThemeSettings}"/>
       </Border>
     </Border>
-    <Border x:Name="SecurityLayer" Background="{StaticResource ModalOverlayBrush}" IsVisible="{Binding IsSecuritySettingsOpen}" Padding="24"
+    <Border x:Name="SecurityLayer" ZIndex="10" Background="{StaticResource ModalOverlayBrush}" IsVisible="{Binding IsSecuritySettingsOpen}" Padding="24"
             KeyboardNavigation.TabNavigation="Cycle">
       <Border Classes="dialog" Width="640" MaxHeight="680" HorizontalAlignment="Center" VerticalAlignment="Center">
         <views:SecuritySettingsView DataContext="{Binding SecuritySettings}"/>
       </Border>
     </Border>
-    <Border x:Name="DeleteLayer" Background="{StaticResource ModalOverlayBrush}" IsVisible="{Binding IsDeletePending}" Padding="24"
+    <Border x:Name="DeleteLayer" ZIndex="10" Background="{StaticResource ModalOverlayBrush}" IsVisible="{Binding IsDeletePending}" Padding="24"
             KeyboardNavigation.TabNavigation="Cycle">
       <Border Classes="dialog" Width="440" HorizontalAlignment="Center" VerticalAlignment="Center">
         <StackPanel Spacing="16" IsEnabled="{Binding !IsBusy}">
@@ -108,7 +108,7 @@
         </StackPanel>
       </Border>
     </Border>
-    <Border x:Name="DiscardLayer" Background="{StaticResource ModalOverlayBrush}" IsVisible="{Binding IsDiscardPending}" Padding="24"
+    <Border x:Name="DiscardLayer" ZIndex="10" Background="{StaticResource ModalOverlayBrush}" IsVisible="{Binding IsDiscardPending}" Padding="24"
             KeyboardNavigation.TabNavigation="Cycle">
       <Border Classes="dialog" Width="440" HorizontalAlignment="Center" VerticalAlignment="Center">
         <StackPanel Spacing="16">
@@ -122,9 +122,16 @@
         </StackPanel>
       </Border>
     </Border>
-    <Border Grid.Row="1" IsVisible="{Binding Notification.IsVisible}" Background="{StaticResource RaisedBrush}"
-            BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="12"
+    <Border x:Name="NotificationToast" ZIndex="5"
+            IsVisible="{Binding Notification.IsVisible}" Opacity="{Binding Notification.Opacity}"
+            Background="{StaticResource RaisedBrush}" BorderBrush="{StaticResource LineBrush}"
+            BorderThickness="1" CornerRadius="12"
             HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="24,0,24,16" Padding="16,8" MaxWidth="650">
+      <Border.Transitions>
+        <Transitions>
+          <DoubleTransition Property="Opacity" Duration="0:0:0.15"/>
+        </Transitions>
+      </Border.Transitions>
       <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
         <material:MaterialIcon Kind="CheckCircleOutline" Width="20" Height="20" Foreground="{StaticResource SuccessBrush}"
                                IsVisible="{Binding !Notification.IsError}"/>
@@ -138,5 +145,5 @@
         </Button>
       </Grid>
     </Border>
-  </Grid>
+  </Panel>
 </UserControl>

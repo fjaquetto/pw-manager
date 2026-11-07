@@ -147,7 +147,7 @@ jobs:
             -p:PublishSingleFile=true `
             -p:IncludeNativeLibrariesForSelfExtract=true `
             -p:MinVerVersionOverride=${{ needs.prepare.outputs.new_version }} `
-            -o ./publish
+            -o ./package/PWManager
 
       - name: Create release archive
         id: create_archive
@@ -157,9 +157,9 @@ jobs:
           $archiveName = "PWManager-v$version-${{ matrix.rid }}.${{ matrix.archive }}"
 
           if ('${{ matrix.archive }}' -eq 'zip') {
-            Compress-Archive -Path ./publish/* -DestinationPath $archiveName
+            Compress-Archive -Path ./package/PWManager -DestinationPath $archiveName
           } else {
-            tar -czf $archiveName -C ./publish .
+            tar -czf $archiveName -C ./package PWManager
           }
 
           echo "archive_name=$archiveName" >> $env:GITHUB_OUTPUT

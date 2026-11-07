@@ -28,10 +28,12 @@ public class ShellTests
         UnlockStub service,
         AppSettingsFake? settings = null,
         Action<ShellViewModel>? configure = null,
-        bool configured = true)
+        bool configured = true,
+        RestoreVaultViewModel? restore = null)
     {
+        var restoreViewModel = restore ?? new RestoreVaultViewModel(new BackupStub(), new FilePickerStub());
         var shell = new ShellViewModel(
-            new UnlockViewModel(service, new AppInfo("2.3.1", "3481920")),
+            new UnlockViewModel(service, new AppInfo("2.3.1", "3481920"), restoreViewModel),
             () =>
             {
                 Created++;
@@ -152,6 +154,42 @@ public class ShellTests
             PumpUntil(() => service.Calls == 1);
 
             Assert.Equal(1, service.Calls);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task Shell_NewVault_ShowsRestoreActionAndAVisibleConfirmation()
+    {
+        Created = 0;
+        var vault = MemoryVault.Sample(1);
+        vault.FilePicker.OpenPath = "/tmp/backup.db";
+        var restore = new RestoreVaultViewModel(vault.Backup, vault.FilePicker);
+        var window = Open(new UnlockStub(), configured: false, restore: restore);
+        var shell = (ShellViewModel)window.DataContext!;
+
+        try
+        {
+            shell.Unlock.Configure(VaultStatus.New);
+            Dispatcher.UIThread.RunJobs();
+
+            var restoreButton = Find<Button>(window, "RestoreBackupButton");
+            Assert.True(restoreButton.IsEffectivelyVisible);
+
+            await restore.ChooseCommand.ExecuteAsync(null);
+            Dispatcher.UIThread.RunJobs();
+
+            var confirmation = window.GetVisualDescendants().OfType<RestoreVaultView>()
+                .Single(view => view.DataContext == restore);
+            var confirmButton = confirmation.GetVisualDescendants().OfType<Button>()
+                .Single(button => button.Name == "ConfirmRestoreButton");
+
+            Assert.True(confirmation.IsEffectivelyVisible);
+            Assert.True(confirmButton.IsEffectivelyVisible);
+            PumpUntil(() => confirmButton.IsFocused);
         }
         finally
         {
@@ -399,10 +437,133 @@ public class ShellTests
     }
 
     [AvaloniaFact]
+    public void NotificationToast_DoesNotResizeTheWorkspace()
+    {
+        var viewModel = MemoryVault.Sample(3).CreateViewModel();
+        UiTestPump.WaitFor(viewModel.LoadEntriesAsync());
+        var window = new Window
+        {
+            Content = new VaultPanel
+            {
+                DataContext = viewModel
+            },
+            Width = 1180,
+            Height = 780
+        };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        try
+        {
+            var workspace = window.GetVisualDescendants().OfType<Grid>().Single(grid => grid.Name == "Workspace");
+            var before = workspace.Bounds;
+
+            viewModel.Notification.Show("Entry saved.");
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.True(Find<Border>(window, "NotificationToast").IsEffectivelyVisible);
+            Assert.Equal(before, workspace.Bounds);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task SecurityRestore_ShowsAVisibleConfirmationAndFocusesIt()
+    {
+        var vault = MemoryVault.Sample(3);
+        vault.FilePicker.OpenPath = "/tmp/backup.db";
+        var viewModel = vault.CreateViewModel();
+        await viewModel.LoadEntriesAsync();
+        var window = new Window
+        {
+            Content = new VaultPanel
+            {
+                DataContext = viewModel
+            },
+            Width = 1180,
+            Height = 780
+        };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        try
+        {
+            viewModel.OpenSecuritySettingsCommand.Execute(null);
+            Dispatcher.UIThread.RunJobs();
+
+            await viewModel.SecuritySettings.Restore.ChooseCommand.ExecuteAsync(null);
+            Dispatcher.UIThread.RunJobs();
+
+            var view = window.GetVisualDescendants().OfType<RestoreVaultView>().Single();
+            var confirm = view.GetVisualDescendants().OfType<Button>().Single(button => button.Name == "ConfirmRestoreButton");
+
+            Assert.True(view.IsEffectivelyVisible);
+            Assert.True(confirm.IsEffectivelyVisible);
+            PumpUntil(() => confirm.IsFocused);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task SecurityImport_ShowsPasswordPromptAndTheMergeSummary()
+    {
+        var vault = MemoryVault.Sample(3);
+        vault.FilePicker.OpenPath = "/tmp/backup.db";
+        var import = new ImportVaultViewModel(vault.Import, vault.FilePicker);
+        var viewModel = vault.CreateViewModel(import);
+        await viewModel.LoadEntriesAsync();
+        var window = new Window
+        {
+            Content = new VaultPanel
+            {
+                DataContext = viewModel
+            },
+            Width = 1180,
+            Height = 780
+        };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        try
+        {
+            viewModel.OpenSecuritySettingsCommand.Execute(null);
+            Dispatcher.UIThread.RunJobs();
+
+            await import.ChooseCommand.ExecuteAsync(null);
+            Dispatcher.UIThread.RunJobs();
+
+            var view = window.GetVisualDescendants().OfType<ImportVaultView>()
+                .Single(candidate => candidate.DataContext == import);
+            var password = view.GetVisualDescendants().OfType<TextBox>()
+                .Single(textBox => textBox.Name == "ImportPasswordBox");
+
+            Assert.True(view.IsEffectivelyVisible);
+            PumpUntil(() => password.IsFocused);
+
+            import.Password = "source-password";
+            await import.ConfirmCommand.ExecuteAsync(null);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.True(import.HasResult);
+            Assert.True(Find<Button>(window, "CloseImportButton").IsEffectivelyVisible);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
     public void VaultPanel_SecurityModal_KeepsTheRightAlignedFieldsClearOfTheScrollBar()
     {
         var viewModel = MemoryVault.Sample(3).CreateViewModel();
-        viewModel.LoadEntriesAsync().GetAwaiter().GetResult();
+        UiTestPump.WaitFor(viewModel.LoadEntriesAsync());
         var window = new Window
         {
             Content = new VaultPanel
