@@ -10,7 +10,9 @@ public sealed class VaultEntryService(
     IUserEncryptorService encryptor,
     TimeProvider timeProvider) : IVaultEntryService
 {
-    public async Task<IReadOnlyList<User>> LoadAsync()
+    public Task<IReadOnlyList<User>> LoadAsync() => Task.Run(LoadCoreAsync);
+
+    private async Task<IReadOnlyList<User>> LoadCoreAsync()
     {
         var encryptedEntries = await userRepository.GetAllAsync();
 

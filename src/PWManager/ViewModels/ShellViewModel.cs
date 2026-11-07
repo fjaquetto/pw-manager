@@ -155,6 +155,7 @@ public partial class ShellViewModel : ViewModelBase
         }
 
         IsOpening = true;
+        Unlock.IsOpeningVault = true;
         MainViewModel? vault = null;
 
         try
@@ -163,8 +164,22 @@ public partial class ShellViewModel : ViewModelBase
             vault.LockRequested += OnVaultLockRequested;
             await vault.LoadEntriesAsync();
         }
+        catch (Exception)
+        {
+            if (vault is not null)
+            {
+                vault.LockRequested -= OnVaultLockRequested;
+                vault.Dispose();
+            }
+
+            _session.Lock();
+            Unlock.Notice = string.Empty;
+            Unlock.ErrorMessage = "Unable to open your vault. Please try again.";
+            return;
+        }
         finally
         {
+            Unlock.IsOpeningVault = false;
             IsOpening = false;
         }
 

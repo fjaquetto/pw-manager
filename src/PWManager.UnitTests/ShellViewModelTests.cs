@@ -1,11 +1,14 @@
 using Microsoft.Extensions.Time.Testing;
 using Moq;
+using PWManager.Application.UseCases.Maintenance;
 using PWManager.Application.UseCases.Settings;
 using PWManager.Application.UseCases.Unlock;
 using PWManager.Domain.Abstractions.Infrastructure;
 using PWManager.Domain.Vault;
 using PWManager.Infra.Configuration;
 using PWManager.Infra.Security;
+using PWManager.Services;
+using PWManager.Services.Interfaces;
 using PWManager.ViewModels;
 
 namespace PWManager.UnitTests;
@@ -104,12 +107,16 @@ public class ShellViewModelTests
 
         Assert.True(shell.ShowProgress);
         Assert.True(shell.IsOpening);
+        Assert.True(shell.Unlock.IsOpeningVault);
+        Assert.True(shell.Unlock.ShowProgress);
+        Assert.False(shell.Unlock.CanUnlock);
         Assert.False(shell.IsUnlocked);
 
         encrypted.SetResult(Array.Empty<User>());
         await shell.OpeningTask!;
 
         Assert.False(shell.ShowProgress);
+        Assert.False(shell.Unlock.IsOpeningVault);
         Assert.True(shell.IsUnlocked);
     }
 
@@ -221,13 +228,14 @@ public class ShellViewModelTests
     public async Task RestoringABackup_LocksTheVaultAndShowsTheNotice()
     {
         var vault = new TestVault();
-        vault.FilePicker.Setup(p => p.PickOpenFileAsync(It.IsAny<string>())).ReturnsAsync("/tmp/backup.db");
+        vault.FilePicker.Setup(p => p.PickOpenFileAsync(It.IsAny<string>()))
+            .ReturnsAsync(FilePickerResult.Selected("/tmp/backup.db"));
         vault.Backup.Setup(b => b.RestoreAsync("/tmp/backup.db")).ReturnsAsync("/tmp/safety.bak");
         var session = new VaultSession();
         var shell = await UnlockShellAsync(session, vaultFactory: () => vault.ViewModel);
 
-        await vault.ViewModel.SecuritySettings.ChooseRestoreCommand.ExecuteAsync(null);
-        await vault.ViewModel.SecuritySettings.ConfirmRestoreCommand.ExecuteAsync(null);
+        await vault.ViewModel.SecuritySettings.Restore.ChooseCommand.ExecuteAsync(null);
+        await vault.ViewModel.SecuritySettings.Restore.ConfirmCommand.ExecuteAsync(null);
 
         Assert.False(shell.IsUnlocked);
         Assert.False(session.IsUnlocked);
@@ -265,7 +273,10 @@ public class ShellViewModelTests
             unlockService = mock.Object;
         }
 
-        var unlock = new UnlockViewModel(unlockService, TestAppInfo.Create())
+        var restore = new RestoreVaultViewModel(
+            Mock.Of<IVaultMaintenanceService>(),
+            Mock.Of<IFilePickerService>());
+        var unlock = new UnlockViewModel(unlockService, TestAppInfo.Create(), restore)
         {
             Password = "master"
         };

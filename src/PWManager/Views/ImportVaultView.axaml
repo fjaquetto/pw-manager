@@ -1,0 +1,49 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PWManager.ViewModels"
+             x:Class="PWManager.Views.ImportVaultView" x:DataType="vm:ImportVaultViewModel">
+  <UserControl.KeyBindings>
+    <KeyBinding Gesture="Escape" Command="{Binding CancelCommand}"/>
+  </UserControl.KeyBindings>
+  <Border Background="{StaticResource ModalOverlayBrush}" Padding="24" KeyboardNavigation.TabNavigation="Cycle">
+    <Border Classes="dialog" Width="560" MaxHeight="600" HorizontalAlignment="Center" VerticalAlignment="Center">
+      <StackPanel Spacing="16">
+        <TextBlock Text="Import and merge a backup" Classes="heading"/>
+        <TextBlock Text="Choose a PWManager vault. Entries are merged by id; this vault is never replaced."
+                   Classes="secondary" TextWrapping="Wrap"/>
+
+        <StackPanel Spacing="6" IsVisible="{Binding HasSelection}">
+          <TextBlock Text="Selected file" FontWeight="Medium"/>
+          <TextBlock Text="{Binding FileName}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+          <TextBlock Text="{Binding SourcePath}" Classes="caption" TextWrapping="Wrap"/>
+        </StackPanel>
+
+        <StackPanel Spacing="8" IsVisible="{Binding ShowConfirmButton}">
+          <TextBlock x:Name="ImportPasswordLabel" Text="Master password of the selected vault" FontWeight="Medium"/>
+          <TextBox x:Name="ImportPasswordBox" Text="{Binding Password}" PasswordChar="•"
+                   PlaceholderText="Password of the backup"
+                   AutomationProperties.LabeledBy="{Binding #ImportPasswordLabel}"/>
+          <TextBlock Text="Entries deleted in the other vault are not removed here." Classes="caption" TextWrapping="Wrap"/>
+        </StackPanel>
+
+        <TextBlock Text="{Binding ErrorMessage}" Classes="error" IsVisible="{Binding HasError}" TextWrapping="Wrap"
+                   AutomationProperties.LiveSetting="Polite"/>
+        <TextBlock Text="{Binding ResultMessage}" TextWrapping="Wrap" IsVisible="{Binding ShowSummary}"
+                   AutomationProperties.LiveSetting="Polite"/>
+        <ProgressBar IsIndeterminate="True" Height="4" IsVisible="{Binding IsBusy}"
+                     AutomationProperties.Name="Importing vault"/>
+
+        <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right" Margin="0,8,0,0">
+          <Button Content="Cancel" Classes="ghost" Command="{Binding CancelCommand}"
+                  IsVisible="{Binding !HasResult}" IsEnabled="{Binding !IsBusy}"/>
+          <Button x:Name="ChooseImportButton" Content="Choose backup…" Command="{Binding ChooseCommand}"
+                  IsVisible="{Binding ShowChooseButton}"/>
+          <Button x:Name="ConfirmImportButton" Content="{Binding ConfirmLabel}" Classes="primary"
+                  Command="{Binding ConfirmCommand}" IsVisible="{Binding ShowConfirmButton}"
+                  IsEnabled="{Binding CanConfirm}"/>
+          <Button x:Name="CloseImportButton" Content="Close" Classes="primary" Command="{Binding CancelCommand}"
+                  IsVisible="{Binding ShowSummary}"/>
+        </StackPanel>
+      </StackPanel>
+    </Border>
+  </Border>
+</UserControl>

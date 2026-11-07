@@ -2,6 +2,7 @@ using Microsoft.Extensions.Time.Testing;
 using Moq;
 using PWManager.Application.UseCases.Settings;
 using PWManager.Application.UseCases.VaultEntries;
+using PWManager.Application.UseCases.Import;
 using PWManager.Application.UseCases.Maintenance;
 using PWManager.Application.UseCases.Rekey;
 using PWManager.Domain.Abstractions.Infrastructure;
@@ -55,7 +56,15 @@ internal sealed class TestVault
         Settings = new AppSettingsService(new AppSettingsStore(Path.Combine(Path.GetTempPath(), "pwmanager-tests-settings-" + Guid.NewGuid().ToString("N"))));
 
         var themeSettings = new ThemeSettingsViewModel(Mock.Of<IThemeService>(), new ColorThemeStore(UnusedThemeDirectory));
-        var securitySettings = new SecuritySettingsViewModel(Settings, Rekey.Object, Backup.Object, FilePicker.Object);
+        var restore = new RestoreVaultViewModel(Backup.Object, FilePicker.Object);
+        var import = new ImportVaultViewModel(Mock.Of<IVaultImportService>(), FilePicker.Object);
+        var securitySettings = new SecuritySettingsViewModel(
+            Settings,
+            Rekey.Object,
+            Backup.Object,
+            FilePicker.Object,
+            restore,
+            import);
 
         ViewModel = new(
             new VaultEntryService(UserRepository.Object, Encryptor.Object, Time),

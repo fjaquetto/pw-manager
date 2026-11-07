@@ -217,6 +217,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         SecuritySettings = securitySettings;
         SecuritySettings.CloseRequested += CloseSecuritySettings;
         SecuritySettings.VaultRestored += OnVaultRestored;
+        SecuritySettings.VaultImported += OnVaultImported;
     }
 
     private void RefreshState()
@@ -767,7 +768,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
 
         _clipboardClear = new CancellationTokenSource();
-        _ = ClearClipboardLaterAsync(TimeSpan.FromSeconds(seconds), _clipboardClear.Token);
+        AsyncOperation.Forget(() => ClearClipboardLaterAsync(TimeSpan.FromSeconds(seconds), _clipboardClear.Token));
     }
 
     private async Task ClearClipboardLaterAsync(TimeSpan delay, CancellationToken cancellationToken)
@@ -826,7 +827,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
 
         _hidePasswords = new CancellationTokenSource();
-        _ = HidePasswordsLaterAsync(TimeSpan.FromSeconds(seconds), _hidePasswords.Token);
+        AsyncOperation.Forget(() => HidePasswordsLaterAsync(TimeSpan.FromSeconds(seconds), _hidePasswords.Token));
     }
 
     private async Task HidePasswordsLaterAsync(TimeSpan delay, CancellationToken cancellationToken)
@@ -935,11 +936,13 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         FocusRequested?.Invoke(IsEditorOpen ? "EditorSite" : "OpenSecuritySettings");
     }
 
-    private void OnVaultRestored()
+    private void OnVaultRestored(string? safetyCopyPath)
     {
         CloseSecuritySettings();
-        LockRequested?.Invoke("Backup restored. Unlock with the master password of that backup.");
+        LockRequested?.Invoke(RestoreVaultViewModel.NoticeFor(safetyCopyPath));
     }
+
+    private void OnVaultImported() => AsyncOperation.Forget(LoadEntriesAsync);
 
     [RelayCommand]
     private void RequestLock() => LockRequested?.Invoke(null);
@@ -1036,7 +1039,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         Notification.Dispose();
         HideSensitiveData();
         CancelClipboardClear();
-        _ = ClearSensitiveClipboardAsync(notify: false);
+        AsyncOperation.Forget(() => ClearSensitiveClipboardAsync(notify: false));
         Editor.Open();
         Generator.GeneratedPassword = string.Empty;
         _allEntries.Clear();

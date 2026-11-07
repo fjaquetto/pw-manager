@@ -46,7 +46,7 @@ internal sealed class TestDatabase : IDisposable
 
     public VaultMigrationRepository CreateMigrationRepository() => new(ContextFactory);
 
-    public VaultBackupService CreateBackupService() => new(DatabasePath);
+    public VaultBackupService CreateBackupService() => new(DatabasePath, TimeProvider.System);
 
     public void Dispose()
     {

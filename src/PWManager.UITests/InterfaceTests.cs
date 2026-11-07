@@ -22,7 +22,7 @@ public class InterfaceTests
     private static Window Open(int width = 1180, int height = 780, int count = 7)
     {
         var viewModel = MemoryVault.Sample(count).CreateViewModel();
-        viewModel.LoadEntriesAsync().GetAwaiter().GetResult();
+        UiTestPump.WaitFor(viewModel.LoadEntriesAsync());
         var window = new Window
         {
             Content = new VaultPanel
@@ -293,7 +293,7 @@ public class InterfaceTests
     {
         var vault = MemoryVault.Sample();
         var viewModel = vault.CreateViewModel();
-        viewModel.LoadEntriesAsync().GetAwaiter().GetResult();
+        UiTestPump.WaitFor(viewModel.LoadEntriesAsync());
         var window = new Window
         {
             Content = new VaultPanel

@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Data.Sqlite;
 using PWManager.Domain.Abstractions.Infrastructure;
 
@@ -5,8 +6,11 @@ namespace PWManager.Infra.Persistence.Backup;
 
 // VACUUM INTO produces a consistent snapshot without the WAL side files, and
 // no plaintext ever leaves the vault.
-public sealed class VaultBackupService(string databasePath) : IVaultBackupService
+public sealed class VaultBackupService(string databasePath, TimeProvider timeProvider) : IVaultBackupService
 {
+    private const long MaxBackupBytes = 1024L * 1024 * 1024;
+    private static readonly string[] RequiredUserColumns = ["Site", "Login", "Password", "CreationDate"];
+
     public string DatabasePath => databasePath;
 
     public async Task BackupAsync(string targetPath)
@@ -56,13 +60,16 @@ public sealed class VaultBackupService(string databasePath) : IVaultBackupServic
 
         try
         {
+            if (!HasSupportedSize(sourcePath))
+            {
+                return false;
+            }
+
             await using var connection = new SqliteConnection(BuildConnectionString(sourcePath, readOnly: true));
             await connection.OpenAsync();
 
-            await using var command = connection.CreateCommand();
-            command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'User';";
-
-            return Convert.ToInt64(await command.ExecuteScalarAsync()) > 0;
+            return await PassesIntegrityCheckAsync(connection)
+                && await HasRequiredUserSchemaAsync(connection);
         }
         catch (SqliteException)
         {
@@ -82,7 +89,7 @@ public sealed class VaultBackupService(string databasePath) : IVaultBackupServic
         }
     }
 
-    public async Task<string> RestoreAsync(string sourcePath)
+    public async Task<string> StageRestoreAsync(string sourcePath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
 
@@ -95,24 +102,46 @@ public sealed class VaultBackupService(string databasePath) : IVaultBackupServic
 
         if (!await IsValidBackupAsync(fullSource))
         {
-            throw new InvalidDataException("The selected file is not a PWManager backup.");
+            throw new InvalidDataException("The selected file is not a valid PWManager vault.");
         }
 
-        var safetyCopy = $"{databasePath}.before-restore-{DateTime.Now:yyyyMMddHHmmss}.bak";
-        await BackupAsync(safetyCopy);
+        var directory = Path.GetDirectoryName(Path.GetFullPath(databasePath));
 
-        SqliteConnection.ClearAllPools();
-        var temporary = $"{databasePath}.restore-{Guid.NewGuid():N}.tmp";
+        if (!string.IsNullOrEmpty(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        var staged = $"{databasePath}.restore-{Guid.NewGuid():N}.tmp";
 
         try
         {
-            File.Copy(fullSource, temporary, overwrite: true);
-            File.Move(temporary, databasePath, overwrite: true);
+            File.Copy(fullSource, staged, overwrite: true);
+            return staged;
         }
-        finally
+        catch
         {
-            TryDelete(temporary);
+            TryDelete(staged);
+            throw;
         }
+    }
+
+    public async Task<string> CommitRestoreAsync(string stagedPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(stagedPath);
+
+        var fullStaged = Path.GetFullPath(stagedPath);
+
+        if (!File.Exists(fullStaged))
+        {
+            throw new InvalidDataException("The prepared backup is no longer available.");
+        }
+
+        var safetyCopy = CreateSafetyCopyPath("before-restore");
+        await BackupAsync(safetyCopy);
+
+        SqliteConnection.ClearAllPools();
+        File.Move(fullStaged, databasePath, overwrite: true);
 
         foreach (var sideFile in new[] { databasePath + "-wal", databasePath + "-shm" })
         {
@@ -121,6 +150,78 @@ public sealed class VaultBackupService(string databasePath) : IVaultBackupServic
 
         return safetyCopy;
     }
+
+    public Task DiscardStagedAsync(string stagedPath)
+    {
+        TryDelete(stagedPath);
+        return Task.CompletedTask;
+    }
+
+    public async Task<string> RestoreAsync(string sourcePath)
+    {
+        var staged = await StageRestoreAsync(sourcePath);
+
+        try
+        {
+            return await CommitRestoreAsync(staged);
+        }
+        catch
+        {
+            TryDelete(staged);
+            throw;
+        }
+    }
+
+    private static bool HasSupportedSize(string sourcePath)
+    {
+        var file = new FileInfo(sourcePath);
+
+        return file.Length is > 0 and <= MaxBackupBytes;
+    }
+
+    private static async Task<bool> PassesIntegrityCheckAsync(SqliteConnection connection)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA quick_check;";
+
+        return string.Equals(
+            Convert.ToString(await command.ExecuteScalarAsync()),
+            "ok",
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static async Task<bool> HasRequiredUserSchemaAsync(SqliteConnection connection)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'User';";
+
+        if (Convert.ToInt64(await command.ExecuteScalarAsync()) == 0)
+        {
+            return false;
+        }
+
+        var columns = await ReadColumnsAsync(connection);
+        return RequiredUserColumns.All(column => columns.Contains(column));
+    }
+
+    private static async Task<HashSet<string>> ReadColumnsAsync(SqliteConnection connection)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA table_info('User');";
+
+        await using var reader = await command.ExecuteReaderAsync();
+        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        while (await reader.ReadAsync())
+        {
+            columns.Add(reader.GetString(1));
+        }
+
+        return columns;
+    }
+
+    private string CreateSafetyCopyPath(string prefix) =>
+        $"{databasePath}.{prefix}-{timeProvider.GetLocalNow().ToString("yyyyMMddHHmmssfff", CultureInfo.InvariantCulture)}.bak";
 
     private static StringComparison PathComparison =>
         OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
