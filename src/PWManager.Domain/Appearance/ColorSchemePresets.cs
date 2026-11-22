@@ -88,12 +88,34 @@ public static class ColorSchemePresets
             warning: "#FBBF24",
             overlay: "#B30A120D"));
 
+    public static ColorSchemePreset GrayAlien { get; } = new(
+        "Gray Alien",
+        ColorScheme.From(
+            canvas: "#090A0B",
+            surface: "#111315",
+            raised: "#1B1F21",
+            field: "#090A0B",
+            line: "#2A3033",
+            text: "#E8ECEB",
+            secondaryText: "#A6B1AD",
+            title: "#E8ECEB",
+            buttonText: "#FFFFFF",
+            accent: "#767676",
+            accentHover: "#656565",
+            focus: "#DCDCDC",
+            selection: "#2A2A2A",
+            success: "#34D399",
+            danger: "#FB7185",
+            warning: "#FBBF24",
+            overlay: "#B3090A0B"));
+
     public static IReadOnlyList<ColorSchemePreset> All { get; } = new[]
     {
         MidnightOcean,
         VioletNebula,
         Ember,
-        Forest
+        Forest,
+        GrayAlien
     };
 
     public static ColorSchemePreset? Find(string? name)
