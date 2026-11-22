@@ -164,7 +164,7 @@ The redesign removes the deprecated Avalonia properties from the active views. T
 - The derived key lives in memory only while the vault is unlocked and is zeroed (`CryptographicOperations.ZeroMemory`) when the vault is locked; the master password itself is not retained.
 - Locking happens automatically after the configured idle time (default 15 minutes), when the window is minimized (optional), or manually via the **Lock** button or Ctrl+L. Locking disposes the decrypted entries and clears a pending clipboard secret.
 - Credentials are decrypted and held in memory during an unlocked session to support searching and use. Masking controls their visual display; revealed passwords are masked again when the window loses focus and after the configured timeout.
-- Copied passwords are cleared from the clipboard after the configured time (default 25 seconds) only if the clipboard still contains that password. Clipboard history managers on Linux cannot be told to exclude the content.
+- Copied passwords are cleared from the clipboard after the configured time (default 0, disabled) only if the clipboard still contains that password. Clipboard history managers on Linux cannot be told to exclude the content.
 - Backups are encrypted database copies created with `VACUUM INTO` (a single consistent file, no WAL side files). Restoring replaces the vault, keeps a `.before-restore` safety copy, and requires unlocking with the backup's master password.
 - The application does not synchronize or transmit vault entries to a remote service.
 
@@ -221,7 +221,7 @@ Changes preview live across the application; **Cancel** (or Esc) restores the pa
 
 **Save and close** persists the current colors under the name in the profile box; selecting an existing profile and renaming it renames the file. The built-in **Default** profile cannot be overwritten or deleted and always restores the original palette.
 
-Four presets ship with the application and always appear in the profile list:
+Five presets ship with the application and always appear in the profile list:
 
 | Preset | Character |
 |---|---|
@@ -229,6 +229,7 @@ Four presets ship with the application and always appear in the profile list:
 | Violet Nebula | Dark plum surfaces with a violet accent |
 | Ember | Warm charcoal with a burnt-orange action color |
 | Forest | Deep green surfaces with a natural green accent |
+| Gray Alien | Neutral graphite surfaces with a muted gray action color |
 
 Like Default, presets cannot be edited or deleted in place: selecting one previews it live across the app, and typing a different name before **Save and close** creates your own copy. All presets are audited against the same WCAG contrast targets as the default palette.
 
@@ -239,7 +240,7 @@ Profiles are stored as JSON files in a `themes` folder next to the database (`%L
 Choose **Security** (shield icon) in the header:
 
 - **Session** — auto-lock after an idle timeout (default 15 minutes, 0 disables), optional locking when the window is minimized, and a reminder that revealed passwords are masked when the window loses focus. The lock button and Ctrl+L lock immediately.
-- **Clipboard** — copied passwords are cleared after the configured time (default 25 seconds, 0 disables) only if the clipboard still holds that password.
+- **Clipboard** — copied passwords are cleared after the configured time (default 0, disabled) only if the clipboard still holds that password.
 - **Passwords** — revealed passwords are hidden again after the configured time (default 20 seconds, 0 disables).
 - **Master password** — change it by entering the current and new passwords; every entry is re-encrypted with a new key in a single transaction (a transient backup protects the operation).
 - **Backup** — save an encrypted copy of the vault (`VACUUM INTO`, one consistent file) or restore one. Restoring keeps a `.before-restore` safety copy of the current vault and locks the app so it is unlocked with the backup's master password. Backups from older schemas are migrated on a staged copy before the current vault is replaced.
