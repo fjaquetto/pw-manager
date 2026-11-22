@@ -175,7 +175,7 @@ public class ColorSchemeTests
     [Fact]
     public void Presets_AreDistinctWellFormedAndReserved()
     {
-        Assert.Equal(4, ColorSchemePresets.All.Count);
+        Assert.Equal(5, ColorSchemePresets.All.Count);
         Assert.Equal(ColorSchemePresets.All.Count, ColorSchemePresets.All.Select(preset => preset.Name).Distinct().Count());
 
         foreach (var preset in ColorSchemePresets.All)

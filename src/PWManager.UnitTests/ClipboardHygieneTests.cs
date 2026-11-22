@@ -9,6 +9,7 @@ public class ClipboardHygieneTests
     public async Task SensitiveCopy_SchedulesAClearAndAnnouncesIt()
     {
         var vault = new TestVault(new User("Site", "login", "  exact secret  "));
+        vault.Settings.Update(vault.Settings.Current with { ClipboardClearSeconds = 25 });
         vault.Clipboard.Setup(c => c.TryGetTextAsync()).ReturnsAsync("  exact secret  ");
         await vault.ViewModel.LoadEntriesAsync();
         var entry = vault.ViewModel.Entries[0];
@@ -44,11 +45,28 @@ public class ClipboardHygieneTests
     public async Task ClipboardClear_DoesNotTouchContentCopiedElsewhere()
     {
         var vault = new TestVault(new User("Site", "login", "  exact secret  "));
+        vault.Settings.Update(vault.Settings.Current with { ClipboardClearSeconds = 25 });
         vault.Clipboard.Setup(c => c.TryGetTextAsync()).ReturnsAsync("something else");
         await vault.ViewModel.LoadEntriesAsync();
 
         await vault.ViewModel.CopyPasswordCommand.ExecuteAsync(vault.ViewModel.Entries[0]);
         vault.Time.Advance(TimeSpan.FromSeconds(25));
+
+        vault.Clipboard.Verify(c => c.ClearAsync(), Times.Never);
+    }
+
+    [Fact]
+    public async Task ClipboardClear_IsDisabledByDefault()
+    {
+        var vault = new TestVault(new User("Site", "login", "  exact secret  "));
+        vault.Clipboard.Setup(c => c.TryGetTextAsync()).ReturnsAsync("  exact secret  ");
+        await vault.ViewModel.LoadEntriesAsync();
+
+        await vault.ViewModel.CopyPasswordCommand.ExecuteAsync(vault.ViewModel.Entries[0]);
+
+        Assert.Equal("Password copied.", vault.ViewModel.Notification.Message);
+
+        vault.Time.Advance(TimeSpan.FromMinutes(10));
 
         vault.Clipboard.Verify(c => c.ClearAsync(), Times.Never);
     }

@@ -23,7 +23,7 @@ public class AppSettingsStoreTests : IDisposable
         var settings = Store.Load();
 
         Assert.Equal(AppSettings.DefaultAutoLockMinutes, settings.AutoLockMinutes);
-        Assert.Equal(AppSettings.DefaultClipboardClearSeconds, settings.ClipboardClearSeconds);
+        Assert.Equal(0, settings.ClipboardClearSeconds);
         Assert.Equal(AppSettings.DefaultHidePasswordsAfterSeconds, settings.HidePasswordsAfterSeconds);
         Assert.False(settings.LockWhenMinimized);
     }

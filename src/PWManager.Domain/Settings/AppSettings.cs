@@ -5,7 +5,7 @@ public sealed record AppSettings
 {
     public const int DefaultAutoLockMinutes = 15;
 
-    public const int DefaultClipboardClearSeconds = 25;
+    public const int DefaultClipboardClearSeconds = 0;
 
     public const int DefaultHidePasswordsAfterSeconds = 20;
 
